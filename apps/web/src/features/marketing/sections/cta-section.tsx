@@ -2,9 +2,11 @@ import { motion } from "framer-motion"
 import { ArrowRight } from "lucide-react"
 import { useI18n } from "@/shared/lib/i18n"
 import { Button } from "@/shared/ui/button"
+import { useNavigate } from "react-router-dom"
 
 export function CTASection() {
   const { t } = useI18n()
+  const navigate = useNavigate()
 
   return (
     <section className="relative py-32 overflow-hidden">
@@ -37,7 +39,7 @@ export function CTASection() {
             transition={{ duration: 0.4, delay: 0.2 }}
             className="mt-10 flex flex-col items-center gap-4"
           >
-            <Button size="lg" className="text-base px-10 h-14 gap-2 group">
+            <Button onClick={() => navigate('/register')} size="lg" className="text-base px-10 h-14 gap-2 group">
               {t("cta.button") as string}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Button>

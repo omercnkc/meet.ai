@@ -1,6 +1,7 @@
 import { motion } from "framer-motion"
 import { Github, Twitter, Linkedin } from "lucide-react"
 import { useI18n } from "@/shared/lib/i18n"
+import { Link } from "react-router-dom"
 
 export function Footer() {
   const { t } = useI18n()
@@ -30,16 +31,17 @@ export function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-6 gap-8">
           {/* Brand */}
           <div className="col-span-2">
-            <motion.a
-              href="#"
-              className="flex items-center gap-2"
-              whileHover={{ scale: 1.02 }}
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
-                <span className="text-sm font-bold text-background">M</span>
-              </div>
-              <span className="text-lg font-semibold">MeetAI</span>
-            </motion.a>
+            <Link to="/">
+              <motion.div
+                className="flex items-center gap-2"
+                whileHover={{ scale: 1.02 }}
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
+                  <span className="text-sm font-bold text-background">M</span>
+                </div>
+                <span className="text-lg font-semibold text-foreground">MeetAI</span>
+              </motion.div>
+            </Link>
             <p className="mt-4 text-sm text-muted-foreground max-w-xs">
               Transform your meetings into actionable outcomes with AI-powered intelligence.
             </p>

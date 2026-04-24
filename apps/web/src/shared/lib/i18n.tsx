@@ -16,6 +16,7 @@ const translations: Record<Locale, Translations> = {
     "nav.pricing": "Pricing",
     "nav.download": "Download",
     "nav.getStarted": "Get Started",
+    "nav.dashboard": "Dashboard",
     
     // Hero
     "hero.title": "Meet. Decide. Assign.",
@@ -99,6 +100,7 @@ const translations: Record<Locale, Translations> = {
     "nav.pricing": "Fiyatlandırma",
     "nav.download": "İndir",
     "nav.getStarted": "Başla",
+    "nav.dashboard": "Panel",
     
     // Hero
     "hero.title": "Topla. Karar Ver. Ata.",

@@ -22,6 +22,7 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
 
 # IDE
 .vscode
@@ -42,3 +43,13 @@ coverage
 # Temp
 .tmp
 .cache
+
+# Firebase / Google service accounts
+firebase-service-account.json
+serviceAccountKey.json
+*service-account*.json
+
+# Python Dependencies & Cache
+__pycache__/
+.venv/
+venv/

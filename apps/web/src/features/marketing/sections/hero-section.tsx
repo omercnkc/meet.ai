@@ -2,9 +2,11 @@ import { motion } from "framer-motion"
 import { Play } from "lucide-react"
 import { Button } from "@/shared/ui/button"
 import { useI18n } from "@/shared/lib/i18n"
+import { useNavigate } from "react-router-dom"
 
 export function HeroSection() {
   const { t } = useI18n()
+  const navigate = useNavigate()
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
@@ -63,10 +65,15 @@ export function HeroSection() {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <Button size="lg" className="text-base px-8 h-12">
+            <Button onClick={() => navigate('/register')} size="lg" className="text-base px-8 h-12">
               {t("hero.cta") as string}
             </Button>
-            <Button variant="outline" size="lg" className="text-base px-8 h-12 gap-2">
+            <Button 
+              onClick={() => document.getElementById('product')?.scrollIntoView({ behavior: 'smooth' })} 
+              variant="outline" 
+              size="lg" 
+              className="text-base px-8 h-12 gap-2"
+            >
               <Play className="h-4 w-4" />
               {t("hero.watchDemo") as string}
             </Button>

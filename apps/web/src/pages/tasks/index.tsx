@@ -2,7 +2,7 @@ import { Header } from "@/features/marketing/components/header"
 
 export default function TasksPage() {
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground">
+    <div className="flex flex-col min-h-screen bg-background text-foreground pt-16">
       <Header />
       <main className="flex-1 flex items-center justify-center p-8">
         <div className="text-center space-y-4 max-w-md w-full">

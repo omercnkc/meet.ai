@@ -5,12 +5,13 @@ import RegisterPage from "@/pages/register"
 import DashboardPage from "@/pages/dashboard"
 import MeetingRoomPage from "@/pages/meeting-room"
 import TasksPage from "@/pages/tasks"
+import { ProtectedRoute, PublicRoute } from "@/shared/components/route-guards"
 
 export const router = createBrowserRouter([
   { path: "/", element: <LandingPage /> },
-  { path: "/login", element: <LoginPage /> },
-  { path: "/register", element: <RegisterPage /> },
-  { path: "/dashboard", element: <DashboardPage /> },
-  { path: "/meeting-room", element: <MeetingRoomPage /> },
-  { path: "/tasks", element: <TasksPage /> },
+  { path: "/login", element: <PublicRoute><LoginPage /></PublicRoute> },
+  { path: "/register", element: <PublicRoute><RegisterPage /></PublicRoute> },
+  { path: "/dashboard", element: <ProtectedRoute><DashboardPage /></ProtectedRoute> },
+  { path: "/meeting-room/:meetingId", element: <ProtectedRoute><MeetingRoomPage /></ProtectedRoute> },
+  { path: "/tasks", element: <ProtectedRoute><TasksPage /></ProtectedRoute> },
 ])

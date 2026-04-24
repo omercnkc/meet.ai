@@ -1,4 +1,3 @@
-import { I18nProvider } from "@/shared/lib/i18n"
 import { Header } from "@/features/marketing/components/header"
 import { HeroSection } from "@/features/marketing/sections/hero-section"
 import { MeetingPreviewSection } from "@/features/marketing/sections/meeting-preview-section"
@@ -11,20 +10,20 @@ import { Footer } from "@/features/marketing/components/footer"
 
 export default function LandingPage() {
   return (
-    <I18nProvider>
-      <div className="min-h-screen">
-        <Header />
-        <main>
+    <div className="min-h-screen">
+      <Header />
+      <main>
+        <div id="product">
           <HeroSection />
           <MeetingPreviewSection />
-          <TasksSection />
-          <TranscriptSection />
-          <AIQASection />
-          <PlatformSection />
-          <CTASection />
-        </main>
-        <Footer />
-      </div>
-    </I18nProvider>
+        </div>
+        <TasksSection />
+        <TranscriptSection />
+        <AIQASection />
+        <PlatformSection />
+        <CTASection />
+      </main>
+      <Footer />
+    </div>
   )
 }

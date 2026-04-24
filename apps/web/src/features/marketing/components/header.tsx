@@ -5,6 +5,8 @@ import { Moon, Sun, Globe, Menu, X } from "lucide-react"
 import { Button } from "@/shared/ui/button"
 import { useI18n, type Locale } from "@/shared/lib/i18n"
 import { cn } from "@/shared/lib/utils"
+import { Link, useNavigate } from "react-router-dom"
+import { useAuth } from "@/app/providers/auth-provider"
 
 export function Header() {
   const { theme, setTheme } = useTheme()
@@ -12,6 +14,17 @@ export function Header() {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  
+  const navigate = useNavigate()
+  const { currentUser } = useAuth()
+
+  const handleGetStarted = () => {
+    if (currentUser) {
+      navigate("/dashboard")
+    } else {
+      navigate("/register")
+    }
+  }
 
   useEffect(() => {
     setMounted(true)
@@ -47,16 +60,17 @@ export function Header() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <motion.a
-            href="#"
-            className="flex items-center gap-2"
-            whileHover={{ scale: 1.02 }}
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
-              <span className="text-sm font-bold text-background">M</span>
-            </div>
-            <span className="text-lg font-semibold">MeetAI</span>
-          </motion.a>
+          <Link to="/">
+            <motion.div
+              className="flex items-center gap-2"
+              whileHover={{ scale: 1.02 }}
+            >
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
+                <span className="text-sm font-bold text-background">M</span>
+              </div>
+              <span className="text-lg font-semibold text-foreground">MeetAI</span>
+            </motion.div>
+          </Link>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-8">
@@ -100,7 +114,9 @@ export function Header() {
             )}
 
             {/* CTA Button */}
-            <Button className="hidden sm:flex">{t("nav.getStarted") as string}</Button>
+            <Button onClick={handleGetStarted} className="hidden sm:flex">
+              {currentUser ? (t("nav.dashboard") as string) || "Dashboard" : (t("nav.getStarted") as string)}
+            </Button>
 
             {/* Mobile Menu Button */}
             <Button
@@ -149,7 +165,9 @@ export function Header() {
                 <span className="text-xs font-medium uppercase">{locale}</span>
               </Button>
             </div>
-            <Button className="w-full">{t("nav.getStarted") as string}</Button>
+            <Button onClick={handleGetStarted} className="w-full">
+              {currentUser ? (t("nav.dashboard") as string) || "Dashboard" : (t("nav.getStarted") as string)}
+            </Button>
           </nav>
         </motion.div>
       )}
