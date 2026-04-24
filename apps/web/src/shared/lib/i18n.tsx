@@ -92,6 +92,49 @@ const translations: Record<Locale, Translations> = {
     "footer.resources": "Resources",
     "footer.legal": "Legal",
     "footer.copyright": "© 2024 MeetAI. All rights reserved.",
+
+    // Auth Panel
+    "auth.panel.title": "Transform Your Meetings with AI",
+    "auth.panel.subtitle": "Smart meetings that capture insights, assign tasks automatically, and keep your team aligned.",
+    "auth.panel.feature1": "AI-powered real-time transcription",
+    "auth.panel.feature2": "Automatic task detection & assignment",
+    "auth.panel.feature3": "Enterprise-grade security & privacy",
+
+    // Auth Login
+    "auth.login.title": "Welcome back",
+    "auth.login.subtitle": "Sign in to your account to continue",
+    "auth.login.email": "Email",
+    "auth.login.emailPlaceholder": "m@example.com",
+    "auth.login.password": "Password",
+    "auth.login.passwordPlaceholder": "••••••••",
+    "auth.login.submit": "Sign In",
+    "auth.login.submitting": "Signing in...",
+    "auth.login.noAccount": "Don't have an account?",
+    "auth.login.register": "Sign up",
+    "auth.login.forgotPassword": "Forgot password?",
+
+    // Auth Register
+    "auth.register.title": "Create an account",
+    "auth.register.subtitle": "Sign up to get started with Meet.ai",
+    "auth.register.name": "Full Name",
+    "auth.register.namePlaceholder": "John Doe",
+    "auth.register.email": "Email",
+    "auth.register.emailPlaceholder": "m@example.com",
+    "auth.register.password": "Password",
+    "auth.register.passwordPlaceholder": "••••••••",
+    "auth.register.confirmPassword": "Confirm Password",
+    "auth.register.confirmPasswordPlaceholder": "••••••••",
+    "auth.register.submit": "Create Account",
+    "auth.register.submitting": "Creating account...",
+    "auth.register.haveAccount": "Already have an account?",
+    "auth.register.login": "Sign in",
+
+    // Auth Errors
+    "auth.error.invalidEmail": "Please enter a valid email address.",
+    "auth.error.passwordMin": "Password must be at least 6 characters.",
+    "auth.error.passwordMatch": "Passwords do not match.",
+    "auth.error.nameRequired": "Please enter your name.",
+    "auth.error.generic": "Something went wrong. Please try again.",
   },
   tr: {
     // Header
@@ -176,6 +219,49 @@ const translations: Record<Locale, Translations> = {
     "footer.resources": "Kaynaklar",
     "footer.legal": "Yasal",
     "footer.copyright": "© 2024 MeetAI. Tüm hakları saklıdır.",
+
+    // Auth Panel
+    "auth.panel.title": "Toplantılarınızı AI ile Dönüştürün",
+    "auth.panel.subtitle": "İçgörüleri yakalayan, görevleri otomatik atayan ve ekibinizi uyumlu tutan akıllı toplantılar.",
+    "auth.panel.feature1": "AI destekli gerçek zamanlı transkript",
+    "auth.panel.feature2": "Otomatik görev algılama ve atama",
+    "auth.panel.feature3": "Kurumsal düzeyde güvenlik ve gizlilik",
+
+    // Auth Login
+    "auth.login.title": "Tekrar hoş geldiniz",
+    "auth.login.subtitle": "Devam etmek için hesabınıza giriş yapın",
+    "auth.login.email": "E-posta",
+    "auth.login.emailPlaceholder": "m@ornek.com",
+    "auth.login.password": "Şifre",
+    "auth.login.passwordPlaceholder": "••••••••",
+    "auth.login.submit": "Giriş Yap",
+    "auth.login.submitting": "Giriş yapılıyor...",
+    "auth.login.noAccount": "Hesabınız yok mu?",
+    "auth.login.register": "Kayıt olun",
+    "auth.login.forgotPassword": "Şifrenizi mi unuttunuz?",
+
+    // Auth Register
+    "auth.register.title": "Hesap oluşturun",
+    "auth.register.subtitle": "Meet.ai ile başlamak için kayıt olun",
+    "auth.register.name": "Ad Soyad",
+    "auth.register.namePlaceholder": "Ahmet Yılmaz",
+    "auth.register.email": "E-posta",
+    "auth.register.emailPlaceholder": "m@ornek.com",
+    "auth.register.password": "Şifre",
+    "auth.register.passwordPlaceholder": "••••••••",
+    "auth.register.confirmPassword": "Şifre Tekrarı",
+    "auth.register.confirmPasswordPlaceholder": "••••••••",
+    "auth.register.submit": "Hesap Oluştur",
+    "auth.register.submitting": "Hesap oluşturuluyor...",
+    "auth.register.haveAccount": "Zaten hesabınız var mı?",
+    "auth.register.login": "Giriş yapın",
+
+    // Auth Errors
+    "auth.error.invalidEmail": "Lütfen geçerli bir e-posta adresi girin.",
+    "auth.error.passwordMin": "Şifre en az 6 karakter olmalıdır.",
+    "auth.error.passwordMatch": "Şifreler eşleşmiyor.",
+    "auth.error.nameRequired": "Lütfen adınızı girin.",
+    "auth.error.generic": "Bir şeyler yanlış gitti. Lütfen tekrar deneyin.",
   },
 }
 
