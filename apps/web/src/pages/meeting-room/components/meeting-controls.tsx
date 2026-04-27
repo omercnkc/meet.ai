@@ -3,9 +3,11 @@ import { Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff } from "lucide-react"
 
 type Props = {
   onLeave: () => void
+  onScreenShareWithPip: () => void
+  isScreenShareEnabled: boolean
 }
 
-export function MeetingControls({ onLeave }: Props) {
+export function MeetingControls({ onLeave, onScreenShareWithPip }: Props) {
   const room = useRoomContext()
   const {
     localParticipant,
@@ -22,10 +24,6 @@ export function MeetingControls({ onLeave }: Props) {
     localParticipant.setCameraEnabled(!isCameraEnabled)
   }
 
-  const toggleScreenShare = () => {
-    localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
-  }
-
   const handleLeave = () => {
     room.disconnect()
     onLeave()
@@ -38,7 +36,7 @@ export function MeetingControls({ onLeave }: Props) {
         className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors shadow-sm ${
           isMicrophoneEnabled
             ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-            : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            : "bg-red-500 text-white hover:bg-red-600"
         }`}
         title={isMicrophoneEnabled ? "Mute" : "Unmute"}
       >
@@ -54,7 +52,7 @@ export function MeetingControls({ onLeave }: Props) {
         className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors shadow-sm ${
           isCameraEnabled
             ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-            : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            : "bg-red-500 text-white hover:bg-red-600"
         }`}
         title={isCameraEnabled ? "Turn off camera" : "Turn on camera"}
       >
@@ -65,14 +63,15 @@ export function MeetingControls({ onLeave }: Props) {
         )}
       </button>
 
+      {/* Screen share button — also opens PiP when starting share */}
       <button
-        onClick={toggleScreenShare}
+        onClick={onScreenShareWithPip}
         className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors shadow-sm ${
           isScreenShareEnabled
             ? "bg-primary text-primary-foreground hover:bg-primary/90"
             : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
         }`}
-        title="Share screen"
+        title={isScreenShareEnabled ? "Stop sharing" : "Share screen"}
       >
         <MonitorUp className="w-5 h-5" />
       </button>

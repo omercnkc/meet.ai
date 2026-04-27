@@ -53,17 +53,6 @@ export function CTASection() {
             transition={{ duration: 0.4, delay: 0.3 }}
             className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8"
           >
-            {[
-              { value: "10K+", label: "Teams" },
-              { value: "1M+", label: "Meetings" },
-              { value: "5M+", label: "Tasks Created" },
-              { value: "99.9%", label: "Uptime" },
-            ].map((stat, i) => (
-              <div key={i} className="text-center">
-                <div className="text-3xl sm:text-4xl font-bold">{stat.value}</div>
-                <div className="mt-1 text-sm text-muted-foreground">{stat.label}</div>
-              </div>
-            ))}
           </motion.div>
         </motion.div>
       </div>

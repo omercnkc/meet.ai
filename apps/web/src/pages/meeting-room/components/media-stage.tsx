@@ -1,6 +1,7 @@
 import { useTracks } from "@livekit/components-react"
 import { Track } from "livekit-client"
 import { ParticipantTile } from "./participant-tile"
+import { MonitorUp } from "lucide-react"
 
 export function MediaStage() {
   const cameraTracks = useTracks(
@@ -8,6 +9,52 @@ export function MediaStage() {
     { onlySubscribed: false }
   )
 
+  const screenShareTracks = useTracks(
+    [{ source: Track.Source.ScreenShare, withPlaceholder: false }],
+    { onlySubscribed: false }
+  )
+
+  const hasScreenShare = screenShareTracks.length > 0
+
+  // When a screen share is active, show it as the main/focused view
+  // with camera tiles in a side strip
+  if (hasScreenShare) {
+    return (
+      <section className="flex-1 flex flex-col lg:flex-row p-4 md:p-6 bg-muted/30 overflow-hidden gap-4">
+        {/* Screen share - main large area */}
+        <div className="flex-1 min-h-0">
+          <div className="relative h-full bg-card border border-border/40 rounded-2xl overflow-hidden shadow-sm">
+            {screenShareTracks.map((trackRef) => (
+              <ParticipantTile
+                key={`screen-${trackRef.participant.identity}`}
+                trackRef={trackRef}
+                isScreenShare
+              />
+            ))}
+            {/* Screen share badge */}
+            <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-primary/90 text-primary-foreground px-2.5 py-1 rounded-md text-xs font-medium shadow-lg backdrop-blur-sm">
+              <MonitorUp className="w-3.5 h-3.5" />
+              Screen Share
+            </div>
+          </div>
+        </div>
+
+        {/* Camera tiles - side strip */}
+        <div className="flex lg:flex-col gap-3 lg:w-48 xl:w-56 shrink-0 overflow-auto">
+          {cameraTracks.map((trackRef) => (
+            <div
+              key={trackRef.participant.identity}
+              className="w-36 h-28 lg:w-full lg:h-36 shrink-0"
+            >
+              <ParticipantTile trackRef={trackRef} />
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  // No screen share — standard grid layout for camera tiles
   return (
     <section className="flex-1 p-4 md:p-6 bg-muted/30 overflow-hidden">
       <div

@@ -10,9 +10,9 @@ import { Footer } from "@/features/marketing/components/footer"
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       <Header />
-      <main>
+      <main className="flex-1">
         <div id="product">
           <HeroSection />
           <MeetingPreviewSection />

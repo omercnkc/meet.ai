@@ -92,6 +92,7 @@ const translations: Record<Locale, Translations> = {
     "footer.resources": "Resources",
     "footer.legal": "Legal",
     "footer.copyright": "© 2024 MeetAI. All rights reserved.",
+    "footer.tagline": "Transform your meetings into actionable outcomes with AI-powered intelligence.",
 
     // Auth Panel
     "auth.panel.title": "Transform Your Meetings with AI",
@@ -219,6 +220,7 @@ const translations: Record<Locale, Translations> = {
     "footer.resources": "Kaynaklar",
     "footer.legal": "Yasal",
     "footer.copyright": "© 2024 MeetAI. Tüm hakları saklıdır.",
+    "footer.tagline": "Toplantılarınızı yapay zeka ile eyleme dönüştürün.",
 
     // Auth Panel
     "auth.panel.title": "Toplantılarınızı AI ile Dönüştürün",

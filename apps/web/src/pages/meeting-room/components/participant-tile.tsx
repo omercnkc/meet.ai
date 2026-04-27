@@ -5,9 +5,11 @@ import { MicOff } from "lucide-react"
 
 type Props = {
   trackRef: TrackReferenceOrPlaceholder
+  /** When true, this tile is rendering a screen share track */
+  isScreenShare?: boolean
 }
 
-export function ParticipantTile({ trackRef }: Props) {
+export function ParticipantTile({ trackRef, isScreenShare = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const participant = trackRef.participant
   const publication = "publication" in trackRef ? trackRef.publication : undefined
@@ -58,7 +60,9 @@ export function ParticipantTile({ trackRef }: Props) {
       {hasVideo ? (
         <video
           ref={videoRef}
-          className="w-full h-full object-cover"
+          className={`w-full h-full ${
+            isScreenShare ? "object-contain bg-black" : "object-cover"
+          }`}
           autoPlay
           playsInline
           muted={isLocal}
@@ -71,14 +75,16 @@ export function ParticipantTile({ trackRef }: Props) {
         </div>
       )}
 
-      {isMicMuted && (
+      {/* Mic muted indicator — only on camera tiles */}
+      {!isScreenShare && isMicMuted && (
         <div className="absolute top-3 right-3 bg-destructive text-destructive-foreground p-1.5 rounded-full shadow-lg">
           <MicOff className="w-3.5 h-3.5" />
         </div>
       )}
 
+      {/* Name badge */}
       <div className="absolute bottom-3 left-3 bg-background/80 backdrop-blur-sm px-2.5 py-1 rounded-md text-xs font-medium border border-border/50">
-        {displayName} {isLocal && "(You)"}
+        {displayName} {isLocal && "(You)"} {isScreenShare && "— Screen"}
       </div>
     </div>
   )

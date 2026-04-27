@@ -39,11 +39,7 @@ export function Header() {
     setLocale(locale === "en" ? "tr" : "en")
   }
 
-  const navItems = [
-    { key: "nav.features", href: "#features" },
-    { key: "nav.product", href: "#product" },
-    { key: "nav.pricing", href: "#pricing" },
-  ]
+  
 
   return (
     <motion.header
@@ -72,18 +68,7 @@ export function Header() {
             </motion.div>
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-8">
-            {navItems.map((item) => (
-              <a
-                key={item.key}
-                href={item.href}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {t(item.key) as string}
-              </a>
-            ))}
-          </nav>
+        
 
           {/* Actions */}
           <div className="flex items-center gap-2">
@@ -144,16 +129,7 @@ export function Header() {
           className="md:hidden bg-background/95 backdrop-blur-xl border-b border-border"
         >
           <nav className="flex flex-col gap-4 p-4">
-            {navItems.map((item) => (
-              <a
-                key={item.key}
-                href={item.href}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                {t(item.key) as string}
-              </a>
-            ))}
+           
             <div className="flex items-center gap-2 pt-4 border-t border-border">
               <Button
                 variant="ghost"
