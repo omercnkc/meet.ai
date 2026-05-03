@@ -7,6 +7,7 @@ import type { RecordingState } from "../hooks/useMeetingRecorder"
 
 type Props = {
   onLeave: () => void
+  onEndMeeting?: () => void
   onScreenShareWithPip: () => void
   /** Recording state from useMeetingRecorder */
   recordingState: RecordingState
@@ -31,6 +32,7 @@ function formatElapsed(seconds: number): string {
 
 export function MeetingControls({
   onLeave,
+  onEndMeeting,
   onScreenShareWithPip,
   recordingState,
   recordingElapsed,
@@ -85,6 +87,11 @@ export function MeetingControls({
   const handleLeave = () => {
     room.disconnect()
     onLeave()
+  }
+
+  const handleEnd = () => {
+    room.disconnect()
+    if (onEndMeeting) onEndMeeting()
   }
 
   // ── Recording button rendering ──
@@ -238,14 +245,26 @@ export function MeetingControls({
 
       <div className="w-px h-8 bg-border/60 mx-1" />
 
-      <button
-        onClick={handleLeave}
-        className="px-6 h-12 rounded-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-medium transition-colors shadow-sm"
-        title="Leave meeting"
-      >
-        <PhoneOff className="w-5 h-5" />
-        <span className="hidden sm:inline">Leave</span>
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleLeave}
+          className="px-6 h-12 rounded-full flex items-center justify-center gap-2 bg-secondary/80 hover:bg-secondary text-secondary-foreground font-medium transition-colors shadow-sm"
+          title="Leave meeting"
+        >
+          <span className="hidden sm:inline">Leave</span>
+        </button>
+
+        {onEndMeeting && (
+          <button
+            onClick={handleEnd}
+            className="px-6 h-12 rounded-full flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-medium transition-colors shadow-sm"
+            title="End meeting for everyone"
+          >
+            <PhoneOff className="w-5 h-5" />
+            <span className="hidden sm:inline">End Meeting</span>
+          </button>
+        )}
+      </div>
     </footer>
   )
 }

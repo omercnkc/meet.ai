@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { useParams, useNavigate } from "react-router-dom"
 import { Header } from "@/features/marketing/components/header"
 import { useAuth } from "@/app/providers/auth-provider"
-import { subscribeToMeeting, Meeting } from "@/shared/lib/firebase/services/meetings"
+import { subscribeToMeeting, Meeting, endMeeting } from "@/shared/lib/firebase/services/meetings"
 import { Video, Share2, AlertCircle } from "lucide-react"
 import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useConnectionState } from "@livekit/components-react"
 import { ConnectionState } from "livekit-client"
@@ -50,6 +50,13 @@ export default function MeetingRoomPage() {
     })
     return () => unsubscribe()
   }, [meetingId])
+
+  // Redirect if ended
+  useEffect(() => {
+    if (meeting?.status === "ended") {
+      navigate(`/meetings/${meetingId}/summary`, { replace: true })
+    }
+  }, [meeting?.status, meetingId, navigate])
 
   // ─── LiveKit Token ───
   useEffect(() => {
@@ -220,6 +227,27 @@ export default function MeetingRoomPage() {
     navigate("/dashboard")
   }
 
+  const handleEndMeeting = async () => {
+    // If recording is active, stop and upload before ending
+    if (recorder.state === "recording") {
+      try {
+        await recorder.stopRecording()
+      } catch {
+        // Best-effort: don't block ending if upload fails
+      }
+    }
+    if (pipWindow && !pipWindow.closed) pipWindow.close()
+    
+    try {
+      await endMeeting(meetingId!)
+    } catch (err) {
+      console.error("Failed to end meeting:", err)
+    }
+    // navigation will happen automatically via the useEffect on meeting.status,
+    // but we can also eagerly navigate:
+    navigate(`/meetings/${meetingId}/summary`, { replace: true })
+  }
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -368,6 +396,7 @@ export default function MeetingRoomPage() {
       {/* Bottom Controls */}
       <MeetingControls
         onLeave={handleLeave}
+        onEndMeeting={meeting.hostId === currentUser?.uid ? handleEndMeeting : undefined}
         onScreenShareWithPip={handleScreenShareToggle}
         recordingState={recorder.state}
         recordingElapsed={recorder.elapsed}

@@ -93,11 +93,11 @@ export default function DashboardPage() {
                   {meetings.map(m => (
                     <div 
                       key={m.id} 
-                      onClick={() => navigate(`/meeting-room/${m.id}`)}
+                      onClick={() => navigate(m.status === "ended" ? `/meetings/${m.id}/summary` : `/meeting-room/${m.id}`)}
                       className="flex justify-between items-center p-4 hover:bg-muted/50 transition-colors cursor-pointer"
                     >
                       <div className="space-y-1">
-                        <p className="font-medium">{m.title}</p>
+                        <p className={`font-medium ${m.status === "ended" ? "text-muted-foreground" : "text-foreground"}`}>{m.title}</p>
                         <p className="text-xs text-muted-foreground">
                           {m.createdAt ? (
                             <>
@@ -108,8 +108,12 @@ export default function DashboardPage() {
                           )}
                         </p>
                       </div>
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-500 border border-green-500/20">
-                        {m.status}
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
+                        m.status === "active" 
+                          ? "bg-green-500/10 text-green-500 border-green-500/20" 
+                          : "bg-secondary text-secondary-foreground border-border/50"
+                      }`}>
+                        {m.status === "active" ? "Active" : "Ended"}
                       </span>
                     </div>
                   ))}

@@ -103,6 +103,29 @@ async def get_recordings_by_meeting(meeting_id: str) -> list[dict[str, Any]]:
     return result.data or []
 
 
+async def download_recording_file(storage_path: str) -> bytes:
+    """
+    Download a recording audio file from Supabase Storage.
+
+    Returns the raw file bytes.
+    Raises RuntimeError if download fails.
+    """
+    client = get_supabase_client()
+    bucket = settings.SUPABASE_RECORDINGS_BUCKET
+
+    logger.info(
+        "[Supabase] Downloading recording  bucket=%s  path=%s", bucket, storage_path,
+    )
+    try:
+        response = client.storage.from_(bucket).download(storage_path)
+        if not response:
+            raise RuntimeError(f"Empty response when downloading {storage_path}")
+        return response
+    except Exception as exc:
+        logger.exception("[Supabase] Download failed  path=%s", storage_path)
+        raise RuntimeError(f"Failed to download recording: {exc}") from exc
+
+
 # ── Transcript helpers ──
 
 

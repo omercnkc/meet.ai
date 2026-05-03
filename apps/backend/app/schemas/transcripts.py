@@ -6,6 +6,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class TranscriptGenerateRequest(BaseModel):
+    """Request body for POST /api/transcripts/generate."""
+
+    meetingId: str = Field(..., min_length=1, description="Firestore meeting ID to transcribe.")
+
+
 class TranscriptCreateRequest(BaseModel):
     """Request body for POST /api/transcripts."""
 

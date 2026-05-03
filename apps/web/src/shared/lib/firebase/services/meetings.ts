@@ -8,6 +8,7 @@ export type Meeting = {
   participantIds: string[]
   status: "active" | "ended" | "scheduled"
   createdAt: Timestamp | null
+  endedAt?: Timestamp | null
 }
 
 export async function createMeeting(hostId: string, title: string) {
@@ -58,5 +59,15 @@ export function subscribeToMeeting(meetingId: string, onUpdate: (meeting: Meetin
     } else {
       onUpdate(null)
     }
+  })
+}
+
+import { updateDoc } from "firebase/firestore"
+
+export async function endMeeting(meetingId: string) {
+  const meetingRef = doc(db, "meetings", meetingId)
+  await updateDoc(meetingRef, {
+    status: "ended",
+    endedAt: serverTimestamp()
   })
 }

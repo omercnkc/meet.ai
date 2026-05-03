@@ -6,3 +6,4 @@ livekit-api==0.7.*
 python-dotenv==1.*
 supabase
 python-multipart
+google-genai

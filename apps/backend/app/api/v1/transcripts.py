@@ -1,7 +1,8 @@
 """
 Transcript API routes.
 
-POST /api/transcripts           — Create a transcript record
+POST /api/transcripts             — Create a transcript record
+POST /api/transcripts/generate    — Generate transcript from latest recording
 GET  /api/transcripts/{meetingId} — Get transcripts for a meeting
 """
 
@@ -11,8 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.integrations.firebase_admin import verify_firebase_token
-from app.schemas.transcripts import TranscriptCreateRequest
+from app.schemas.transcripts import TranscriptCreateRequest, TranscriptGenerateRequest
 from app.services.supabase_service import create_transcript, get_transcripts_by_meeting
+from app.services.transcription_service import transcribe_meeting
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,71 @@ async def create_transcript_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create transcript.",
+        )
+
+    return {
+        "id": record.get("id"),
+        "meetingId": record.get("meeting_id"),
+        "recordingId": record.get("recording_id"),
+        "status": record.get("status"),
+        "language": record.get("language"),
+        "fullText": record.get("full_text"),
+        "segments": record.get("segments"),
+        "errorMessage": record.get("error_message"),
+        "createdAt": record.get("created_at"),
+        "updatedAt": record.get("updated_at"),
+    }
+
+
+@router.post(
+    "/generate",
+    summary="Generate transcript from latest recording",
+    responses={
+        401: {"description": "Missing or invalid Firebase ID token"},
+        400: {"description": "Invalid request"},
+        404: {"description": "No recording found for this meeting"},
+        500: {"description": "Transcription or database failure"},
+    },
+)
+async def generate_transcript_endpoint(
+    body: TranscriptGenerateRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+):
+    """
+    Generate a transcript from the latest recording for a meeting.
+
+    1. Verify Firebase ID token.
+    2. Call transcription service (download → Gemini → save).
+    3. Return the transcript record.
+    """
+
+    # ── Auth ──
+    await verify_firebase_token(credentials.credentials)
+
+    try:
+        record = await transcribe_meeting(body.meetingId)
+    except RuntimeError as exc:
+        # Determine status code from error context
+        msg = str(exc)
+        if "No recordings found" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=msg,
+            )
+        logger.exception(
+            "[Transcripts] Generation failed for meeting=%s", body.meetingId,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=msg,
+        )
+    except Exception as exc:
+        logger.exception(
+            "[Transcripts] Unexpected error for meeting=%s", body.meetingId,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Transcript generation failed. Please try again.",
         )
 
     return {
