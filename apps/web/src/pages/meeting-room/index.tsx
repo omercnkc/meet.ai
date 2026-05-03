@@ -12,6 +12,7 @@ import { TaskPanel } from "./components/task-panel"
 import { MediaStage } from "./components/media-stage"
 import { MeetingControls } from "./components/meeting-controls"
 import { PipContent } from "./components/pip-content"
+import { useMeetingRecorder } from "./hooks/useMeetingRecorder"
 
 const PIP_SUPPORTED = typeof window !== "undefined" && "documentPictureInPicture" in window
 
@@ -32,6 +33,9 @@ export default function MeetingRoomPage() {
   const [isOverlayHidden, setIsOverlayHidden] = useState(false)
   const [isPipHiddenForSession, setIsPipHiddenForSession] = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
+
+  // ─── Recording ───
+  const recorder = useMeetingRecorder(meetingId, currentUser)
 
   // Refs for tracking across listeners
   const pipPreparedRef = useRef(false)
@@ -203,7 +207,15 @@ export default function MeetingRoomPage() {
     alert("Meeting link copied to clipboard!")
   }
 
-  const handleLeave = () => {
+  const handleLeave = async () => {
+    // If recording is active, stop and upload before leaving
+    if (recorder.state === "recording") {
+      try {
+        await recorder.stopRecording()
+      } catch {
+        // Best-effort: don't block leaving if upload fails
+      }
+    }
     if (pipWindow && !pipWindow.closed) pipWindow.close()
     navigate("/dashboard")
   }
@@ -357,6 +369,12 @@ export default function MeetingRoomPage() {
       <MeetingControls
         onLeave={handleLeave}
         onScreenShareWithPip={handleScreenShareToggle}
+        recordingState={recorder.state}
+        recordingElapsed={recorder.elapsed}
+        recordingSupported={recorder.isSupported}
+        recordingError={recorder.errorMessage}
+        onStartRecording={recorder.startRecording}
+        onStopRecording={recorder.stopRecording}
       />
 
       {/* Document PiP Portal (External window overlay) */}

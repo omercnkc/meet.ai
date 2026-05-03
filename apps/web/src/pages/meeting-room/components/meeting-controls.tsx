@@ -1,15 +1,44 @@
 import { useEffect, useState } from "react"
 import { useRoomContext } from "@livekit/components-react"
-import { Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff } from "lucide-react"
+import { Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff, Loader2 } from "lucide-react"
 
-import { CircleDot } from "lucide-react"
+import { CircleDot, Square, CheckCircle2, AlertCircle } from "lucide-react"
+import type { RecordingState } from "../hooks/useMeetingRecorder"
 
 type Props = {
   onLeave: () => void
   onScreenShareWithPip: () => void
+  /** Recording state from useMeetingRecorder */
+  recordingState: RecordingState
+  /** Elapsed seconds while recording */
+  recordingElapsed: number
+  /** Whether MediaRecorder is supported */
+  recordingSupported: boolean
+  /** Error message from recorder, if any */
+  recordingError: string | null
+  /** Start recording callback */
+  onStartRecording: () => void
+  /** Stop recording callback */
+  onStopRecording: () => void
 }
 
-export function MeetingControls({ onLeave, onScreenShareWithPip }: Props) {
+/** Format seconds as mm:ss */
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+}
+
+export function MeetingControls({
+  onLeave,
+  onScreenShareWithPip,
+  recordingState,
+  recordingElapsed,
+  recordingSupported,
+  recordingError,
+  onStartRecording,
+  onStopRecording,
+}: Props) {
   const room = useRoomContext()
   const localParticipant = room.localParticipant
   
@@ -56,6 +85,105 @@ export function MeetingControls({ onLeave, onScreenShareWithPip }: Props) {
   const handleLeave = () => {
     room.disconnect()
     onLeave()
+  }
+
+  // ── Recording button rendering ──
+
+  const renderRecordingButton = () => {
+    // Browser doesn't support MediaRecorder
+    if (!recordingSupported) {
+      return (
+        <button
+          disabled
+          className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-secondary text-secondary-foreground opacity-50 cursor-not-allowed shrink-0"
+          title="Recording is not supported in this browser"
+        >
+          <CircleDot className="w-5 h-5 text-muted-foreground" />
+          <span className="hidden sm:inline text-xs font-medium text-muted-foreground">Not Supported</span>
+        </button>
+      )
+    }
+
+    switch (recordingState) {
+      case "idle":
+        return (
+          <button
+            onClick={onStartRecording}
+            className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-secondary text-secondary-foreground hover:bg-secondary/80 shrink-0"
+            title="Start recording"
+          >
+            <CircleDot className="w-5 h-5 text-red-500" />
+            <span className="hidden sm:inline text-xs font-medium">Record</span>
+          </button>
+        )
+
+      case "recording":
+        return (
+          <button
+            onClick={onStopRecording}
+            className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-red-500/10 border border-red-500/30 text-red-500 hover:bg-red-500/20 shrink-0 group"
+            title="Stop recording"
+          >
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+            </span>
+            <Square className="w-4 h-4 hidden group-hover:block" />
+            <span className="text-xs font-semibold tabular-nums">{formatElapsed(recordingElapsed)}</span>
+          </button>
+        )
+
+      case "stopping":
+        return (
+          <button
+            disabled
+            className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-secondary text-secondary-foreground opacity-70 cursor-wait shrink-0"
+            title="Stopping..."
+          >
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            <span className="hidden sm:inline text-xs font-medium text-muted-foreground">Stopping...</span>
+          </button>
+        )
+
+      case "uploading":
+        return (
+          <button
+            disabled
+            className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-primary/10 border border-primary/30 text-primary cursor-wait shrink-0"
+            title="Uploading recording..."
+          >
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="hidden sm:inline text-xs font-medium">Uploading...</span>
+          </button>
+        )
+
+      case "uploaded":
+        return (
+          <button
+            onClick={onStartRecording}
+            className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-green-500/10 border border-green-500/30 text-green-500 hover:bg-secondary hover:text-secondary-foreground hover:border-transparent shrink-0"
+            title="Recording uploaded! Click to record again"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            <span className="hidden sm:inline text-xs font-medium">Uploaded</span>
+          </button>
+        )
+
+      case "error":
+        return (
+          <button
+            onClick={onStartRecording}
+            className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-secondary hover:text-secondary-foreground hover:border-transparent shrink-0"
+            title={recordingError || "Recording failed. Click to retry."}
+          >
+            <AlertCircle className="w-5 h-5" />
+            <span className="hidden sm:inline text-xs font-medium">Retry</span>
+          </button>
+        )
+
+      default:
+        return null
+    }
   }
 
   return (
@@ -105,14 +233,8 @@ export function MeetingControls({ onLeave, onScreenShareWithPip }: Props) {
         <MonitorUp className="w-5 h-5" />
       </button>
 
-      <button
-        disabled
-        className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-secondary text-secondary-foreground opacity-50 cursor-not-allowed shrink-0"
-        title="Recording (Coming Soon)"
-      >
-        <CircleDot className="w-5 h-5 text-red-400/70" />
-        <span className="hidden sm:inline text-xs font-medium uppercase tracking-wider text-muted-foreground">Coming Soon</span>
-      </button>
+      {/* Recording button */}
+      {renderRecordingButton()}
 
       <div className="w-px h-8 bg-border/60 mx-1" />
 
