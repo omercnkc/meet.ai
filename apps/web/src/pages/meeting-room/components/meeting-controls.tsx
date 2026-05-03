@@ -1,27 +1,56 @@
-import { useLocalParticipant, useRoomContext } from "@livekit/components-react"
+import { useEffect, useState } from "react"
+import { useRoomContext } from "@livekit/components-react"
 import { Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff } from "lucide-react"
+
+import { CircleDot } from "lucide-react"
 
 type Props = {
   onLeave: () => void
   onScreenShareWithPip: () => void
-  isScreenShareEnabled: boolean
 }
 
 export function MeetingControls({ onLeave, onScreenShareWithPip }: Props) {
   const room = useRoomContext()
-  const {
-    localParticipant,
-    isMicrophoneEnabled,
-    isCameraEnabled,
-    isScreenShareEnabled,
-  } = useLocalParticipant()
+  const localParticipant = room.localParticipant
+  
+  const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(localParticipant?.isMicrophoneEnabled ?? false)
+  const [isCameraEnabled, setIsCameraEnabled] = useState(localParticipant?.isCameraEnabled ?? false)
+  const [isScreenShareEnabled, setIsScreenShareEnabled] = useState(localParticipant?.isScreenShareEnabled ?? false)
+
+  useEffect(() => {
+    if (!localParticipant) return
+
+    const updateState = () => {
+      setIsMicrophoneEnabled(localParticipant.isMicrophoneEnabled)
+      setIsCameraEnabled(localParticipant.isCameraEnabled)
+      setIsScreenShareEnabled(localParticipant.isScreenShareEnabled)
+    }
+
+    updateState()
+
+    localParticipant.on("trackMuted", updateState)
+    localParticipant.on("trackUnmuted", updateState)
+    localParticipant.on("localTrackPublished", updateState)
+    localParticipant.on("localTrackUnpublished", updateState)
+
+    return () => {
+      localParticipant.off("trackMuted", updateState)
+      localParticipant.off("trackUnmuted", updateState)
+      localParticipant.off("localTrackPublished", updateState)
+      localParticipant.off("localTrackUnpublished", updateState)
+    }
+  }, [localParticipant])
 
   const toggleMic = () => {
-    localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
+    if (localParticipant) {
+      localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
+    }
   }
 
   const toggleCamera = () => {
-    localParticipant.setCameraEnabled(!isCameraEnabled)
+    if (localParticipant) {
+      localParticipant.setCameraEnabled(!isCameraEnabled)
+    }
   }
 
   const handleLeave = () => {
@@ -74,6 +103,15 @@ export function MeetingControls({ onLeave, onScreenShareWithPip }: Props) {
         title={isScreenShareEnabled ? "Stop sharing" : "Share screen"}
       >
         <MonitorUp className="w-5 h-5" />
+      </button>
+
+      <button
+        disabled
+        className="px-4 h-12 rounded-full flex items-center justify-center gap-2 transition-colors shadow-sm bg-secondary text-secondary-foreground opacity-50 cursor-not-allowed shrink-0"
+        title="Recording (Coming Soon)"
+      >
+        <CircleDot className="w-5 h-5 text-red-400/70" />
+        <span className="hidden sm:inline text-xs font-medium uppercase tracking-wider text-muted-foreground">Coming Soon</span>
       </button>
 
       <div className="w-px h-8 bg-border/60 mx-1" />

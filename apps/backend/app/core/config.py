@@ -18,6 +18,11 @@ class Settings:
     # Firebase
     FIREBASE_PROJECT_ID: str
 
+    # Supabase
+    SUPABASE_URL: str
+    SUPABASE_SERVICE_ROLE_KEY: str
+    SUPABASE_RECORDINGS_BUCKET: str = "meet-recordings"
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
@@ -41,6 +46,9 @@ def load_settings() -> Settings:
         LIVEKIT_API_SECRET=_require("LIVEKIT_API_SECRET"),
         LIVEKIT_URL=_require("LIVEKIT_URL"),
         FIREBASE_PROJECT_ID=_require("FIREBASE_PROJECT_ID"),
+        SUPABASE_URL=_require("SUPABASE_URL"),
+        SUPABASE_SERVICE_ROLE_KEY=_require("SUPABASE_SERVICE_ROLE_KEY"),
+        SUPABASE_RECORDINGS_BUCKET=os.getenv("SUPABASE_RECORDINGS_BUCKET", "meet-recordings"),
         HOST=os.getenv("HOST", "0.0.0.0"),
         PORT=int(os.getenv("PORT", "8000")),
         CORS_ORIGINS=cors_origins,

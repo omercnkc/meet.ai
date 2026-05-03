@@ -1,7 +1,7 @@
-import { useTracks, useLocalParticipant } from "@livekit/components-react"
+import { useTracks, useRoomContext } from "@livekit/components-react"
 import { Track, LocalParticipant } from "livekit-client"
 import type { TrackReferenceOrPlaceholder } from "@livekit/components-react"
-import { useRef, useEffect } from "react"
+import { useRef, useEffect, useState } from "react"
 import { Video, ArrowLeft, Mic, MicOff, VideoOff, X } from "lucide-react"
 
 /* ── Compact video tile for PiP ── */
@@ -17,17 +17,49 @@ function PipVideoTile({
   const videoRef = useRef<HTMLVideoElement>(null)
   const participant = trackRef.participant
   const publication = "publication" in trackRef ? trackRef.publication : undefined
-  const track = publication?.track
+  const initialTrack = publication?.track
   const isLocal = participant instanceof LocalParticipant
-  const hasVideo = !!track && !publication?.isMuted
+  
+  const [activeTrack, setActiveTrack] = useState(initialTrack)
+  const [hasVideo, setHasVideo] = useState(!!initialTrack && !publication?.isMuted)
 
   useEffect(() => {
     const el = videoRef.current
-    if (el && track) {
-      track.attach(el)
-      return () => { track.detach(el) }
+    if (el && activeTrack) {
+      activeTrack.attach(el)
+      return () => { activeTrack.detach(el) }
     }
-  }, [track])
+  }, [activeTrack, hasVideo])
+
+  useEffect(() => {
+    const updateStatus = () => {
+      const camPub = isScreenShare 
+        ? participant.getTrackPublication(Track.Source.ScreenShare)
+        : participant.getTrackPublication(Track.Source.Camera)
+      
+      const currentTrack = camPub?.track
+      setActiveTrack(currentTrack)
+      setHasVideo(!!currentTrack && !camPub.isMuted)
+    }
+
+    updateStatus()
+
+    participant.on("trackMuted", updateStatus)
+    participant.on("trackUnmuted", updateStatus)
+    participant.on("trackPublished", updateStatus)
+    participant.on("trackUnpublished", updateStatus)
+    participant.on("localTrackPublished", updateStatus)
+    participant.on("localTrackUnpublished", updateStatus)
+
+    return () => {
+      participant.off("trackMuted", updateStatus)
+      participant.off("trackUnmuted", updateStatus)
+      participant.off("trackPublished", updateStatus)
+      participant.off("trackUnpublished", updateStatus)
+      participant.off("localTrackPublished", updateStatus)
+      participant.off("localTrackUnpublished", updateStatus)
+    }
+  }, [participant, isScreenShare])
 
   const displayName = participant.name || participant.identity
   const initial = displayName?.[0]?.toUpperCase() || "?"
@@ -83,7 +115,33 @@ export function PipContent({ onReturn, onHide }: { onReturn: () => void; onHide:
     { onlySubscribed: false }
   )
 
-  const { isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant()
+  const room = useRoomContext()
+  const localParticipant = room.localParticipant
+  const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(localParticipant?.isMicrophoneEnabled ?? false)
+  const [isCameraEnabled, setIsCameraEnabled] = useState(localParticipant?.isCameraEnabled ?? false)
+
+  useEffect(() => {
+    if (!localParticipant) return
+
+    const updateState = () => {
+      setIsMicrophoneEnabled(localParticipant.isMicrophoneEnabled)
+      setIsCameraEnabled(localParticipant.isCameraEnabled)
+    }
+
+    updateState()
+
+    localParticipant.on("trackMuted", updateState)
+    localParticipant.on("trackUnmuted", updateState)
+    localParticipant.on("localTrackPublished", updateState)
+    localParticipant.on("localTrackUnpublished", updateState)
+
+    return () => {
+      localParticipant.off("trackMuted", updateState)
+      localParticipant.off("trackUnmuted", updateState)
+      localParticipant.off("localTrackPublished", updateState)
+      localParticipant.off("localTrackUnpublished", updateState)
+    }
+  }, [localParticipant])
 
   const hasScreenShare = screenShareTracks.length > 0
   const primaryTrack = hasScreenShare ? screenShareTracks[0] : cameraTracks[0]

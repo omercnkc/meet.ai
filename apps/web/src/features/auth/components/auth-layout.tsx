@@ -14,7 +14,7 @@ const floatingAnimation = {
     transition: {
       duration: 6,
       repeat: Infinity,
-      ease: "easeInOut",
+      ease: "easeInOut" as const,
     },
   },
 }
@@ -78,7 +78,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           transition={{
             duration: 8,
             repeat: Infinity,
-            ease: "easeInOut",
+            ease: "easeInOut" as const,
           }}
         />
         <motion.div
@@ -90,7 +90,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           transition={{
             duration: 10,
             repeat: Infinity,
-            ease: "easeInOut",
+            ease: "easeInOut" as const,
           }}
         />
 

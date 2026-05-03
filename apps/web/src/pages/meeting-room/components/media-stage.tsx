@@ -22,8 +22,8 @@ export function MediaStage() {
     return (
       <section className="flex-1 flex flex-col lg:flex-row p-4 md:p-6 bg-muted/30 overflow-hidden gap-4">
         {/* Screen share - main large area */}
-        <div className="flex-1 min-h-0">
-          <div className="relative h-full bg-card border border-border/40 rounded-2xl overflow-hidden shadow-sm">
+        <div className="flex-1 min-h-0 relative bg-black/5 rounded-2xl p-1">
+          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-sm">
             {screenShareTracks.map((trackRef) => (
               <ParticipantTile
                 key={`screen-${trackRef.participant.identity}`}
@@ -40,11 +40,11 @@ export function MediaStage() {
         </div>
 
         {/* Camera tiles - side strip */}
-        <div className="flex lg:flex-col gap-3 lg:w-48 xl:w-56 shrink-0 overflow-auto">
+        <div className="flex lg:flex-col gap-3 lg:w-56 xl:w-64 shrink-0 overflow-x-auto lg:overflow-y-auto pb-2 lg:pb-0 scrollbar-hide">
           {cameraTracks.map((trackRef) => (
             <div
               key={trackRef.participant.identity}
-              className="w-36 h-28 lg:w-full lg:h-36 shrink-0"
+              className="w-40 h-28 lg:w-full lg:h-40 xl:h-48 shrink-0 snap-center"
             >
               <ParticipantTile trackRef={trackRef} />
             </div>
@@ -58,12 +58,14 @@ export function MediaStage() {
   return (
     <section className="flex-1 p-4 md:p-6 bg-muted/30 overflow-hidden">
       <div
-        className={`h-full grid gap-4 auto-rows-fr ${
+        className={`h-full w-full max-w-7xl mx-auto grid gap-4 p-2 ${
           cameraTracks.length <= 1
-            ? "grid-cols-1"
-            : cameraTracks.length <= 4
-              ? "grid-cols-2"
-              : "grid-cols-3"
+            ? "grid-cols-1 grid-rows-1"
+            : cameraTracks.length <= 2
+              ? "grid-cols-1 md:grid-cols-2 grid-rows-1"
+              : cameraTracks.length <= 4
+                ? "grid-cols-2 grid-rows-2"
+                : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 auto-rows-fr"
         }`}
       >
         {cameraTracks.map((trackRef) => (

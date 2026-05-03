@@ -31,8 +31,7 @@ export async function createMeeting(hostId: string, title: string) {
 export function subscribeToMeetings(userId: string, onUpdate: (meetings: Meeting[]) => void) {
   const q = query(
     collection(db, "meetings"),
-    where("participantIds", "array-contains", userId),
-    orderBy("createdAt", "desc")
+    where("participantIds", "array-contains", userId)
   )
   
   return onSnapshot(q, (snapshot) => {
@@ -40,6 +39,14 @@ export function subscribeToMeetings(userId: string, onUpdate: (meetings: Meeting
       id: doc.id,
       ...doc.data()
     })) as Meeting[]
+
+    // Sort meetings client-side (newest first) to avoid composite index requirements
+    meetings.sort((a, b) => {
+      const timeA = a.createdAt?.toMillis() || 0;
+      const timeB = b.createdAt?.toMillis() || 0;
+      return timeB - timeA;
+    });
+
     onUpdate(meetings)
   })
 }

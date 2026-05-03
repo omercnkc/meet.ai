@@ -4,3 +4,5 @@ pydantic==2.*
 firebase-admin==6.*
 livekit-api==0.7.*
 python-dotenv==1.*
+supabase
+python-multipart

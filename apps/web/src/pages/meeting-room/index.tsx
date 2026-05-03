@@ -5,7 +5,8 @@ import { Header } from "@/features/marketing/components/header"
 import { useAuth } from "@/app/providers/auth-provider"
 import { subscribeToMeeting, Meeting } from "@/shared/lib/firebase/services/meetings"
 import { Video, Share2, AlertCircle } from "lucide-react"
-import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant } from "@livekit/components-react"
+import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useConnectionState } from "@livekit/components-react"
+import { ConnectionState } from "livekit-client"
 import { getLiveKitToken, LIVEKIT_URL } from "@/shared/lib/livekit/token-service"
 import { TaskPanel } from "./components/task-panel"
 import { MediaStage } from "./components/media-stage"
@@ -291,6 +292,7 @@ export default function MeetingRoomPage() {
       video={false}
       className="flex flex-col h-screen bg-background text-foreground overflow-hidden relative"
     >
+      <ConnectionStatusOverlay />
       <RoomAudioRenderer />
 
       {/* Capture localParticipant ref via a child component */}
@@ -419,4 +421,26 @@ function LocalParticipantCapture({
   }, [localParticipant, localParticipant?.isScreenShareEnabled, onScreenShareStateChange])
 
   return null
+}
+
+/**
+ * Overlay for LiveKit connection states
+ */
+function ConnectionStatusOverlay() {
+  const state = useConnectionState()
+  
+  if (state === ConnectionState.Connected) return null
+  
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md">
+      <div className="flex flex-col items-center gap-4 p-8 bg-card rounded-2xl shadow-xl border border-border/50 text-center max-w-sm mx-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+        <p className="text-lg font-medium text-foreground">
+          {state === ConnectionState.Connecting ? "Connecting to meeting..." : 
+           state === ConnectionState.Reconnecting ? "Connection lost. Reconnecting..." : 
+           state === ConnectionState.Disconnected ? "Disconnected." : "Connecting..."}
+        </p>
+      </div>
+    </div>
+  )
 }

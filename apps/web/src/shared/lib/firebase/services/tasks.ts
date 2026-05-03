@@ -32,8 +32,7 @@ export async function createTask(meetingId: string, title: string, createdByUser
 export function subscribeToTasks(meetingId: string, onUpdate: (tasks: Task[]) => void) {
   const q = query(
     collection(db, "tasks"),
-    where("meetingId", "==", meetingId),
-    orderBy("createdAt", "desc")
+    where("meetingId", "==", meetingId)
   )
   
   return onSnapshot(q, (snapshot) => {
@@ -41,6 +40,14 @@ export function subscribeToTasks(meetingId: string, onUpdate: (tasks: Task[]) =>
       id: doc.id,
       ...doc.data()
     })) as Task[]
+
+    // Sort tasks client-side (newest first) to avoid composite index requirements
+    tasks.sort((a, b) => {
+      const timeA = a.createdAt?.toMillis() || 0;
+      const timeB = b.createdAt?.toMillis() || 0;
+      return timeB - timeA;
+    });
+
     onUpdate(tasks)
   })
 }

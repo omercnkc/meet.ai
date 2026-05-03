@@ -4,5 +4,8 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.1"
   }
 }
