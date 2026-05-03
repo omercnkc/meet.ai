@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { Header } from "@/features/marketing/components/header"
 import { useAuth } from "@/app/providers/auth-provider"
 import { createMeeting, subscribeToMeetings, Meeting } from "@/shared/lib/firebase/services/meetings"
-import { Calendar, Video, CheckSquare, FileText, Plus, LogOut } from "lucide-react"
+import { subscribeToOpenTasksForMeetings, subscribeToDoneTasksForMeetings, Task } from "@/shared/lib/firebase/services/tasks"
+import { Calendar, Video, CheckSquare, CheckCircle2, FileText, Plus, LogOut, Circle } from "lucide-react"
 
 export default function DashboardPage() {
   const { currentUser, signOut } = useAuth()
@@ -19,6 +20,38 @@ export default function DashboardPage() {
     })
     return () => unsubscribe()
   }, [currentUser])
+
+  const [openTasks, setOpenTasks] = useState<Task[]>([])
+  const [doneTasks, setDoneTasks] = useState<Task[]>([])
+  
+  const endedMeetingIds = useMemo(() => meetings.filter(m => m.status === "ended").map(m => m.id), [meetings])
+  const endedMeetingsKey = endedMeetingIds.join(',')
+
+  useEffect(() => {
+    if (endedMeetingIds.length === 0) {
+      setOpenTasks([])
+      return
+    }
+    const unsubscribe = subscribeToOpenTasksForMeetings(endedMeetingIds, (tasks) => {
+      setOpenTasks(tasks)
+    })
+    return () => unsubscribe()
+  }, [endedMeetingsKey])
+
+  useEffect(() => {
+    if (endedMeetingIds.length === 0) {
+      setDoneTasks([])
+      return
+    }
+    const unsubscribe = subscribeToDoneTasksForMeetings(endedMeetingIds, (tasks) => {
+      setDoneTasks(tasks)
+    })
+    return () => unsubscribe()
+  }, [endedMeetingsKey])
+
+  const getMeetingInfo = (meetingId: string) => {
+    return meetings.find(m => m.id === meetingId)
+  }
 
   const handleCreateMeeting = async () => {
     if (!currentUser) return
@@ -124,26 +157,80 @@ export default function DashboardPage() {
 
           <div className="space-y-6">
             {/* Tasks Card */}
-            <div className="rounded-xl border border-border/60 bg-card shadow-sm p-6">
-              <div className="flex items-center gap-2 mb-4">
+            <div className="rounded-xl border border-border/60 bg-card shadow-sm p-6 flex flex-col max-h-[400px]">
+              <div className="flex items-center gap-2 mb-4 shrink-0">
                 <CheckSquare className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-semibold">Action Items</h2>
+                <h2 className="text-xl font-semibold">Open tasks from previous meetings</h2>
               </div>
-              <div className="flex flex-col items-center justify-center py-6 text-center">
-                <p className="text-sm text-muted-foreground">No pending tasks.</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">AI will automatically assign tasks during meetings.</p>
+              <div className="flex-1 overflow-y-auto pr-2">
+                {openTasks.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <p className="text-sm text-muted-foreground">No open tasks from previous meetings.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {openTasks.map(task => {
+                      const mInfo = getMeetingInfo(task.meetingId)
+                      const dateObj = mInfo?.endedAt || mInfo?.createdAt
+                      const dateStr = dateObj ? dateObj.toDate().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : "Unknown date"
+                      
+                      return (
+                        <div key={task.id} className="flex gap-3 p-3 rounded-lg border border-border/60 bg-background shadow-sm hover:bg-muted/30 transition-colors">
+                          <Circle className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                          <div className="space-y-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground break-words">{task.title}</p>
+                            <div className="text-xs text-muted-foreground space-y-0.5">
+                              <p>Meeting: <span className="text-foreground/80 font-medium truncate">{mInfo?.title || "Unknown"}</span></p>
+                              <p>Date: {dateStr}</p>
+                              {task.assignedToUserId && (
+                                <p>Assigned to: {task.assignedToUserId === currentUser?.uid ? "You" : task.assignedToUserId}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Transcripts Card */}
-            <div className="rounded-xl border border-border/60 bg-card shadow-sm p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <FileText className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-semibold">Recent Transcripts</h2>
+            {/* Completed Tasks Card */}
+            <div className="rounded-xl border border-border/60 bg-card shadow-sm p-6 flex flex-col max-h-[400px]">
+              <div className="flex items-center gap-2 mb-4 shrink-0">
+                <CheckCircle2 className="w-5 h-5 text-green-500" />
+                <h2 className="text-xl font-semibold">Completed tasks</h2>
               </div>
-              <div className="flex flex-col items-center justify-center py-6 text-center">
-                <p className="text-sm text-muted-foreground">No transcripts yet.</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">Transcripts will appear after a meeting ends.</p>
+              <div className="flex-1 overflow-y-auto pr-2">
+                {doneTasks.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <p className="text-sm text-muted-foreground">No completed tasks yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {doneTasks.map(task => {
+                      const mInfo = getMeetingInfo(task.meetingId)
+                      const dateObj = mInfo?.endedAt || mInfo?.createdAt
+                      const dateStr = dateObj ? dateObj.toDate().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : "Unknown date"
+                      
+                      return (
+                        <div key={task.id} className="flex gap-3 p-3 rounded-lg border border-border/60 bg-background shadow-sm hover:bg-muted/30 transition-colors opacity-80">
+                          <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
+                          <div className="space-y-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground break-words line-through">{task.title}</p>
+                            <div className="text-xs text-muted-foreground space-y-0.5">
+                              <p>Meeting: <span className="text-foreground/80 font-medium truncate">{mInfo?.title || "Unknown"}</span></p>
+                              <p>Date: {dateStr}</p>
+                              {task.assignedToUserId && (
+                                <p>Assigned to: {task.assignedToUserId === currentUser?.uid ? "You" : task.assignedToUserId}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>

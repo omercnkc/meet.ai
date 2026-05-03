@@ -56,3 +56,96 @@ export async function updateTaskStatus(taskId: string, status: "open" | "done") 
   const taskRef = doc(db, "tasks", taskId)
   await updateDoc(taskRef, { status })
 }
+
+export function subscribeToOpenTasksForMeetings(meetingIds: string[], onUpdate: (tasks: Task[]) => void) {
+  if (!meetingIds || meetingIds.length === 0) {
+    onUpdate([])
+    return () => {}
+  }
+
+  // Limit to at most 50 meetings (5 chunks of 10) to avoid excessive queries
+  const chunks = []
+  for (let i = 0; i < Math.min(meetingIds.length, 50); i += 10) {
+    chunks.push(meetingIds.slice(i, i + 10))
+  }
+
+  const unsubscribes: Array<() => void> = []
+  const tasksByChunk: Task[][] = new Array(chunks.length).fill([])
+
+  chunks.forEach((chunk, index) => {
+    const q = query(
+      collection(db, "tasks"),
+      where("meetingId", "in", chunk),
+      where("status", "==", "open")
+    )
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      tasksByChunk[index] = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Task[]
+
+      const allTasks = tasksByChunk.flat()
+      allTasks.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis() || 0
+        const timeB = b.createdAt?.toMillis() || 0
+        return timeB - timeA
+      })
+
+      onUpdate(allTasks)
+    })
+
+    unsubscribes.push(unsub)
+  })
+
+  return () => {
+    unsubscribes.forEach((unsub) => unsub())
+  }
+}
+
+export function subscribeToDoneTasksForMeetings(meetingIds: string[], onUpdate: (tasks: Task[]) => void) {
+  if (!meetingIds || meetingIds.length === 0) {
+    onUpdate([])
+    return () => {}
+  }
+
+  // Limit to at most 50 meetings (5 chunks of 10) to avoid excessive queries
+  const chunks = []
+  for (let i = 0; i < Math.min(meetingIds.length, 50); i += 10) {
+    chunks.push(meetingIds.slice(i, i + 10))
+  }
+
+  const unsubscribes: Array<() => void> = []
+  const tasksByChunk: Task[][] = new Array(chunks.length).fill([])
+
+  chunks.forEach((chunk, index) => {
+    const q = query(
+      collection(db, "tasks"),
+      where("meetingId", "in", chunk),
+      where("status", "==", "done")
+    )
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      tasksByChunk[index] = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Task[]
+
+      const allTasks = tasksByChunk.flat()
+      allTasks.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis() || 0
+        const timeB = b.createdAt?.toMillis() || 0
+        return timeB - timeA
+      })
+
+      onUpdate(allTasks)
+    })
+
+    unsubscribes.push(unsub)
+  })
+
+  return () => {
+    unsubscribes.forEach((unsub) => unsub())
+  }
+}
+
