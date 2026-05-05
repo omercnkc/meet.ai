@@ -57,7 +57,8 @@ export default function DashboardPage() {
     if (!currentUser) return
     setIsCreating(true)
     try {
-      const meeting = await createMeeting(currentUser.uid, `${currentUser.displayName || 'User'}'s Meeting`)
+      const userName = currentUser.displayName || currentUser.email?.split('@')[0] || 'User'
+      const meeting = await createMeeting(currentUser.uid, `${userName}'s Meeting`)
       navigate(`/meeting-room/${meeting.id}`)
     } catch (error) {
       console.error("Failed to create meeting", error)
@@ -130,7 +131,9 @@ export default function DashboardPage() {
                       className="flex justify-between items-center p-4 hover:bg-muted/50 transition-colors cursor-pointer"
                     >
                       <div className="space-y-1">
-                        <p className={`font-medium ${m.status === "ended" ? "text-muted-foreground" : "text-foreground"}`}>{m.title}</p>
+                        <p className={`font-medium ${m.status === "ended" ? "text-muted-foreground" : "text-foreground"}`}>
+                          {m.title === "User's Meeting" ? `${currentUser?.displayName || currentUser?.email?.split('@')[0]}'s Meeting` : m.title}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {m.createdAt ? (
                             <>
