@@ -12,6 +12,19 @@ const MOCK_PARTICIPANTS = {
   "meeting-456": ["dave@example.com"],
 };
 
+const MOCK_MEETINGS = {
+  "meeting-123": { hostId: "user123", participantIds: [] },
+  "meeting-456": { hostId: "user456", participantIds: [] }
+};
+
+export async function getMeetingMetadata(meetingId) {
+  // Real implementation (Firebase Admin SDK):
+  // const doc = await db.collection("meetings").doc(meetingId).get();
+  // return doc.data();
+  return MOCK_MEETINGS[meetingId] || null;
+}
+
+
 export async function getTodosByMeetingId(meetingId) {
   // Real implementation (Firebase Admin SDK):
   //   const snapshot = await db.collection("tasks")

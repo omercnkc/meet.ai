@@ -1,6 +1,6 @@
 import { motion } from "framer-motion"
 import { useTheme } from "@/app/providers/theme-provider"
-import { useI18n } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 import { Sparkles, Users, Shield, Globe, Moon, Sun } from "lucide-react"
 
 interface AuthLayoutProps {
@@ -27,7 +27,7 @@ const features = [
 
 export function AuthLayout({ children }: AuthLayoutProps) {
   const { theme, setTheme } = useTheme()
-  const { locale, setLocale, t } = useI18n()
+  const { t, i18n } = useTranslation()
 
   const isDark =
     theme === "dark" ||
@@ -46,11 +46,11 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </button>
         <button
-          onClick={() => setLocale(locale === "en" ? "tr" : "en")}
+          onClick={() => i18n.changeLanguage(i18n.language.startsWith("en") ? "tr" : "en")}
           className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background/80 backdrop-blur-sm px-3 text-sm font-medium text-foreground hover:bg-accent transition-colors"
         >
           <Globe className="size-4" />
-          {locale === "en" ? "TR" : "EN"}
+          {i18n.language.startsWith("en") ? "TR" : "EN"}
         </button>
       </div>
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createPortal } from "react-dom"
 import { useParams, useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { Header } from "@/features/marketing/components/header"
 import { useAuth } from "@/app/providers/auth-provider"
 import { subscribeToMeeting, Meeting, endMeeting } from "@/shared/lib/firebase/services/meetings"
@@ -12,11 +13,15 @@ import { TaskPanel } from "./components/task-panel"
 import { MediaStage } from "./components/media-stage"
 import { MeetingControls } from "./components/meeting-controls"
 import { PipContent } from "./components/pip-content"
+import { AdmissionControlListener } from "./components/admission-listener"
+import { GuestAdmissionFlow } from "./components/guest-admission-flow"
 import { useMeetingRecorder } from "./hooks/useMeetingRecorder"
+import { logInfo, logAdmissionEvent, logError } from "@/shared/lib/logger"
 
 const PIP_SUPPORTED = typeof window !== "undefined" && "documentPictureInPicture" in window
 
 export default function MeetingRoomPage() {
+  const { t } = useTranslation("meeting");
   const { meetingId } = useParams<{ meetingId: string }>()
   const navigate = useNavigate()
   const { currentUser } = useAuth()
@@ -59,12 +64,22 @@ export default function MeetingRoomPage() {
   }, [meeting?.status, meetingId, navigate])
 
   // ─── LiveKit Token ───
+  const isGuest = meeting && currentUser ? currentUser.uid !== meeting.hostId && !meeting.participantIds.includes(currentUser.uid) : false;
+
   useEffect(() => {
     if (!meeting || !currentUser || !meetingId) return
+    if (isGuest) return // Guests get token via admission flow
+    
     getLiveKitToken(meetingId, currentUser)
-      .then(setToken)
-      .catch((err) => setTokenError(err.message))
-  }, [meeting, currentUser, meetingId])
+      .then((tk) => {
+        setToken(tk);
+        logAdmissionEvent("FULL_TOKEN_GENERATED", meetingId, currentUser.uid, { role: "host_or_participant" });
+      })
+      .catch((err) => {
+        setTokenError(err.message);
+        logError("Failed to fetch full token", { error: err.message, meetingId, userId: currentUser.uid });
+      })
+  }, [meeting, currentUser, meetingId, isGuest])
 
   // ─── PiP Helpers ───
   const copyStylesToWindow = useCallback((target: Window) => {
@@ -211,7 +226,7 @@ export default function MeetingRoomPage() {
 
   const handleShareInvite = () => {
     navigator.clipboard.writeText(window.location.href)
-    alert("Meeting link copied to clipboard!")
+    alert(t("inviteCopied"))
   }
 
   const handleLeave = async () => {
@@ -261,7 +276,7 @@ export default function MeetingRoomPage() {
     return (
       <div className="flex flex-col min-h-screen bg-background items-center justify-center">
         <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-        <p className="mt-4 text-muted-foreground animate-pulse font-medium">Entering meeting...</p>
+        <p className="mt-4 text-muted-foreground animate-pulse font-medium">{t("enteringMeeting")}</p>
       </div>
     )
   }
@@ -275,13 +290,13 @@ export default function MeetingRoomPage() {
             <div className="mx-auto w-12 h-12 bg-destructive/10 text-destructive flex items-center justify-center rounded-full mb-4">
               <AlertCircle className="w-6 h-6" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Meeting Not Found</h1>
-            <p className="text-muted-foreground">The meeting link is invalid or the meeting has already securely concluded.</p>
+            <h1 className="text-2xl font-bold tracking-tight">{t("meetingNotFound")}</h1>
+            <p className="text-muted-foreground">{t("meetingNotFoundDesc")}</p>
             <button
               onClick={() => navigate("/dashboard")}
               className="mt-4 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors w-full"
             >
-              Return to Dashboard
+              {t("returnToDashboard")}
             </button>
           </div>
         </main>
@@ -298,13 +313,13 @@ export default function MeetingRoomPage() {
             <div className="mx-auto w-12 h-12 bg-destructive/10 text-destructive flex items-center justify-center rounded-full mb-4">
               <AlertCircle className="w-6 h-6" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Connection Error</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{t("connectionError")}</h1>
             <p className="text-muted-foreground text-sm">{tokenError}</p>
             <button
               onClick={() => navigate("/dashboard")}
               className="mt-4 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors w-full"
             >
-              Return to Dashboard
+              {t("returnToDashboard")}
             </button>
           </div>
         </main>
@@ -312,11 +327,32 @@ export default function MeetingRoomPage() {
     )
   }
 
+  // ─── Guest Flow ───
+  if (isGuest && !token) {
+    return (
+      <GuestAdmissionFlow 
+        meeting={meeting} 
+        currentUser={currentUser!} 
+        onAdmitted={(approvedToken) => {
+          logAdmissionEvent("GUEST_UPGRADED_TO_FULL_TOKEN", meeting.id, currentUser!.uid);
+          // Assuming we need to get the real token via getLiveKitToken or use the one from payload. 
+          // If the architecture fetches it, fetch it here. We established they use token-service.
+          getLiveKitToken(meeting.id, currentUser!)
+            .then(tk => {
+              setToken(tk);
+              logAdmissionEvent("FULL_TOKEN_GENERATED", meeting.id, currentUser!.uid, { role: "guest" });
+            })
+            .catch(err => logError("Failed to fetch full token for guest", { error: err }));
+        }} 
+      />
+    )
+  }
+
   if (!token) {
     return (
       <div className="flex flex-col min-h-screen bg-background items-center justify-center">
         <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-        <p className="mt-4 text-muted-foreground animate-pulse font-medium">Connecting to room...</p>
+        <p className="mt-4 text-muted-foreground animate-pulse font-medium">{t("connectingToRoom")}</p>
       </div>
     )
   }
@@ -341,6 +377,14 @@ export default function MeetingRoomPage() {
         onScreenShareStateChange={setIsScreenSharing}
       />
 
+      {meeting && (
+        <AdmissionControlListener 
+          meetingId={meetingId!} 
+          hostId={meeting.hostId} 
+          currentUserId={currentUser?.uid} 
+        />
+      )}
+
       {/* Meeting Header */}
       <header className="h-16 border-b border-border/40 bg-card/50 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
         <div className="flex items-center gap-4">
@@ -357,14 +401,14 @@ export default function MeetingRoomPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium hidden sm:block bg-muted px-3 py-1.5 rounded-md text-muted-foreground">
-            {meeting.participantIds.length} participant(s)
+            {t("participantsCount", { count: meeting.participantIds.length })}
           </span>
           <button
             onClick={handleShareInvite}
             className="flex items-center gap-2 px-4 py-1.5 rounded-md border border-input bg-background font-medium hover:bg-accent hover:text-accent-foreground transition-colors text-sm"
           >
             <Share2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Share Invite</span>
+            <span className="hidden sm:inline">{t("shareInvite")}</span>
           </button>
         </div>
       </header>
@@ -373,7 +417,7 @@ export default function MeetingRoomPage() {
       {pipHint && (
         <div className="bg-primary/10 border-b border-primary/20 px-4 py-2 flex items-center justify-between shrink-0 z-10">
           <span className="text-xs text-primary font-medium">
-            Click to enable the floating meeting window while browsing other tabs.
+            {t("pipHint")}
           </span>
           <button
             onClick={async () => {
@@ -420,7 +464,7 @@ export default function MeetingRoomPage() {
               className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[100] flex flex-wrap items-center justify-center gap-2 px-3 py-1.5 bg-background/70 backdrop-blur-md border border-white/10 rounded-xl shadow-lg w-auto max-w-[90%]"
             >
               <span className="text-[10px] font-medium text-foreground/90 whitespace-nowrap overflow-hidden text-ellipsis">
-                This tab is being shared with Meet.ai
+                {t("tabShared")}
               </span>
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
@@ -474,6 +518,7 @@ function LocalParticipantCapture({
  * Overlay for LiveKit connection states
  */
 function ConnectionStatusOverlay() {
+  const { t } = useTranslation("meeting");
   const state = useConnectionState()
   
   if (state === ConnectionState.Connected) return null
@@ -483,9 +528,9 @@ function ConnectionStatusOverlay() {
       <div className="flex flex-col items-center gap-4 p-8 bg-card rounded-2xl shadow-xl border border-border/50 text-center max-w-sm mx-4">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
         <p className="text-lg font-medium text-foreground">
-          {state === ConnectionState.Connecting ? "Connecting to meeting..." : 
-           state === ConnectionState.Reconnecting ? "Connection lost. Reconnecting..." : 
-           state === ConnectionState.Disconnected ? "Disconnected." : "Connecting..."}
+          {state === ConnectionState.Connecting ? t("connectingMeeting") : 
+           state === ConnectionState.Reconnecting ? t("reconnecting") : 
+           state === ConnectionState.Disconnected ? t("disconnected") : t("connecting")}
         </p>
       </div>
     </div>

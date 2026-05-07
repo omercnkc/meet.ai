@@ -1,11 +1,11 @@
 import { useRef, useState } from "react"
 import { motion, useScroll, useTransform } from "framer-motion"
 import { Sparkles, Send, ArrowRight } from "lucide-react"
-import { useI18n } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/shared/ui/button"
 
 export function AIQASection() {
-  const { t } = useI18n()
+  const { t } = useTranslation()
   const sectionRef = useRef<HTMLDivElement>(null)
   const [isTyping, setIsTyping] = useState(false)
   const [showAnswer, setShowAnswer] = useState(false)

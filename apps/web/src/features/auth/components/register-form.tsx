@@ -2,12 +2,12 @@ import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
 import { User, Mail, Lock, ArrowRight, Loader2 } from "lucide-react"
-import { useI18n } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 import { useAuth } from "@/app/providers/auth-provider"
 import { createUserProfile } from "@/shared/lib/firebase/services/users"
 
 export function RegisterForm() {
-  const { t } = useI18n()
+  const { t } = useTranslation()
   const { signUp } = useAuth()
   const navigate = useNavigate()
 

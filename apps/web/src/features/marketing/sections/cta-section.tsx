@@ -1,11 +1,11 @@
 import { motion } from "framer-motion"
 import { ArrowRight } from "lucide-react"
-import { useI18n } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/shared/ui/button"
 import { useNavigate } from "react-router-dom"
 
 export function CTASection() {
-  const { t } = useI18n()
+  const { t } = useTranslation()
   const navigate = useNavigate()
 
   return (

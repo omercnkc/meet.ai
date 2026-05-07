@@ -1,11 +1,11 @@
 import { useRef } from "react"
 import { motion, useScroll, useTransform } from "framer-motion"
 import { Video, Mic, MicOff, VideoOff, MonitorUp, Users, MoreHorizontal } from "lucide-react"
-import { useI18n } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/shared/ui/button"
 
 export function MeetingPreviewSection() {
-  const { t } = useI18n()
+  const { t } = useTranslation()
   const sectionRef = useRef<HTMLDivElement>(null)
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -15,8 +15,10 @@ export function MeetingPreviewSection() {
   const y = useTransform(scrollYProgress, [0, 1], [100, -100])
   const opacity = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0, 1, 1, 0])
 
-  const tasks = t("meeting.tasks") as Record<string, string>
-  const assignees = t("meeting.assignees") as string[]
+  const rawTasks = t("meeting.tasks", { returnObjects: true });
+  const tasks = (typeof rawTasks === "object" && rawTasks !== null ? rawTasks : {}) as Record<string, string>;
+  const rawAssignees = t("meeting.assignees", { returnObjects: true });
+  const assignees = (Array.isArray(rawAssignees) ? rawAssignees : []) as string[];
 
   return (
     <section

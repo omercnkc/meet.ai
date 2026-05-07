@@ -3,14 +3,14 @@ import { motion } from "framer-motion"
 import { useTheme } from "@/app/providers/theme-provider"
 import { Moon, Sun, Globe, Menu, X } from "lucide-react"
 import { Button } from "@/shared/ui/button"
-import { useI18n, type Locale } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/shared/lib/utils"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "@/app/providers/auth-provider"
 
 export function Header() {
   const { theme, setTheme } = useTheme()
-  const { locale, setLocale, t } = useI18n()
+  const { t, i18n } = useTranslation()
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -36,7 +36,8 @@ export function Header() {
   }, [])
 
   const toggleLocale = () => {
-    setLocale(locale === "en" ? "tr" : "en")
+    const nextLang = i18n.language.startsWith("en") ? "tr" : "en"
+    i18n.changeLanguage(nextLang)
   }
 
   
@@ -80,7 +81,7 @@ export function Header() {
               className="hidden sm:flex"
             >
               <Globe className="h-4 w-4" />
-              <span className="ml-1 text-xs font-medium uppercase">{locale}</span>
+              <span className="ml-1 text-xs font-medium uppercase">{i18n.language}</span>
             </Button>
 
             {/* Theme Toggle */}
@@ -138,7 +139,7 @@ export function Header() {
                 className="flex items-center gap-1"
               >
                 <Globe className="h-4 w-4" />
-                <span className="text-xs font-medium uppercase">{locale}</span>
+                <span className="text-xs font-medium uppercase">{i18n.language}</span>
               </Button>
             </div>
             <Button onClick={handleGetStarted} className="w-full">

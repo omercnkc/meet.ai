@@ -1,10 +1,10 @@
 import { useRef } from "react"
 import { motion, useScroll, useTransform } from "framer-motion"
 import { Monitor, Smartphone, Laptop } from "lucide-react"
-import { useI18n } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 
 export function PlatformSection() {
-  const { t } = useI18n()
+  const { t } = useTranslation()
   const sectionRef = useRef<HTMLDivElement>(null)
   const { scrollYProgress } = useScroll({
     target: sectionRef,

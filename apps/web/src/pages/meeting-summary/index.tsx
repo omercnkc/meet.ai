@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import { Header } from "@/features/marketing/components/header"
 import { useAuth } from "@/app/providers/auth-provider"
 import { subscribeToMeeting, Meeting } from "@/shared/lib/firebase/services/meetings"
@@ -9,6 +10,7 @@ import { askMeetingQuestion, getAiMessages, AiMessage } from "@/shared/lib/api/a
 import { AlertCircle, ArrowLeft, Bot, CheckCircle2, Circle, FileText, Loader2, MessageSquareText, Send, Sparkles, Video } from "lucide-react"
 
 export default function MeetingSummaryPage() {
+  const { t, i18n } = useTranslation(["summary", "dashboard", "meeting"]);
   const { meetingId } = useParams<{ meetingId: string }>()
   const navigate = useNavigate()
   const { currentUser } = useAuth()
@@ -130,7 +132,7 @@ export default function MeetingSummaryPage() {
     return (
       <div className="flex flex-col min-h-screen bg-background items-center justify-center">
         <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin" />
-        <p className="mt-4 text-muted-foreground font-medium animate-pulse">Loading summary...</p>
+        <p className="mt-4 text-muted-foreground font-medium animate-pulse">{t('loadingSummary', { ns: 'summary' })}</p>
       </div>
     )
   }
@@ -144,13 +146,13 @@ export default function MeetingSummaryPage() {
             <div className="mx-auto w-12 h-12 bg-destructive/10 text-destructive flex items-center justify-center rounded-full mb-4">
               <AlertCircle className="w-6 h-6" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Meeting Not Found</h1>
-            <p className="text-muted-foreground">The meeting might have been deleted or never existed.</p>
+            <h1 className="text-2xl font-bold tracking-tight">{t('meetingNotFound', { ns: 'meeting' })}</h1>
+            <p className="text-muted-foreground">{t('meetingNotFoundDesc2', { ns: 'summary' })}</p>
             <button
               onClick={() => navigate("/dashboard")}
               className="mt-4 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors w-full"
             >
-              Return to Dashboard
+              {t('returnToDashboard', { ns: 'meeting' })}
             </button>
           </div>
         </main>
@@ -182,21 +184,21 @@ export default function MeetingSummaryPage() {
               <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
                 <Video className="w-5 h-5 text-primary" />
               </div>
-              <h1 className="text-3xl font-bold tracking-tight">{meeting.title}</h1>
+              <h1 className="text-3xl font-bold tracking-tight">{t('userMeeting', { name: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', ns: 'summary' })}</h1>
               <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
                 meeting.status === "active" 
                   ? "bg-green-500/10 text-green-500 border-green-500/20" 
                   : "bg-secondary text-secondary-foreground border-border/50"
               }`}>
-                {meeting.status === "active" ? "Active" : "Ended"}
+                {meeting.status === "active" ? t("active", { ns: "dashboard" }) : t("ended", { ns: "dashboard" })}
               </span>
             </div>
             <p className="text-muted-foreground text-sm flex items-center gap-2">
-              <span>Created: {meeting.createdAt?.toDate().toLocaleString()}</span>
+              <span>{t('createdLabel', { ns: 'summary' })} {meeting.createdAt?.toDate().toLocaleString(i18n.language)}</span>
               {meeting.endedAt && (
                 <>
                   <span>•</span>
-                  <span>Ended: {meeting.endedAt.toDate().toLocaleString()}</span>
+                  <span>{t('endedLabel', { ns: 'summary' })} {meeting.endedAt.toDate().toLocaleString(i18n.language)}</span>
                 </>
               )}
             </p>
@@ -222,7 +224,7 @@ export default function MeetingSummaryPage() {
               <div className="p-6 border-b border-border/40 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-primary" />
-                  <h2 className="text-xl font-semibold">Meeting Transcript</h2>
+                  <h2 className="text-xl font-semibold">{t('meetingTranscript', { ns: 'summary' })}</h2>
                 </div>
                 {!latestTranscript && (
                   <button
@@ -231,7 +233,7 @@ export default function MeetingSummaryPage() {
                     className="flex items-center gap-2 px-4 py-2 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm font-medium disabled:opacity-50"
                   >
                     {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                    {isGenerating ? "Generating..." : "Generate Transcript"}
+                    {isGenerating ? t("generating", { ns: "summary" }) : t("generateTranscript", { ns: "summary" })}
                   </button>
                 )}
               </div>
@@ -240,7 +242,7 @@ export default function MeetingSummaryPage() {
                   <div className="mb-4 p-4 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 shrink-0" />
                     <div>
-                      <p className="font-semibold">Generation failed</p>
+                      <p className="font-semibold">{t('generationFailed', { ns: 'summary' })}</p>
                       <p className="text-destructive/80">{generateError}</p>
                     </div>
                   </div>
@@ -253,7 +255,7 @@ export default function MeetingSummaryPage() {
                 ) : latestTranscript ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     <p className="whitespace-pre-wrap leading-relaxed text-foreground/90">
-                      {latestTranscript.fullText || "No content found in transcript."}
+                      {latestTranscript.fullText || "{t('noContentFound', { ns: 'summary' })}"}
                     </p>
                   </div>
                 ) : (
@@ -261,9 +263,9 @@ export default function MeetingSummaryPage() {
                     <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center mx-auto text-muted-foreground">
                       <FileText className="w-6 h-6" />
                     </div>
-                    <p className="text-muted-foreground font-medium">No transcript available</p>
+                    <p className="text-muted-foreground font-medium">{t('noTranscript', { ns: 'summary' })}</p>
                     <p className="text-sm text-muted-foreground/80 max-w-sm mx-auto">
-                      Generate a transcript from the latest meeting recording using our AI transcription service.
+                      {t('noTranscriptDesc', { ns: 'summary' })}
                     </p>
                   </div>
                 )}
@@ -277,10 +279,10 @@ export default function MeetingSummaryPage() {
                   <MessageSquareText className="w-5 h-5 text-primary" />
                   <Sparkles className="w-3 h-3 text-primary absolute -top-1 -right-1.5" />
                 </div>
-                <h2 className="text-xl font-semibold">AI Q&A</h2>
+                <h2 className="text-xl font-semibold">{t('aiQa', { ns: 'summary' })}</h2>
                 {aiMessages.length > 0 && (
                   <span className="ml-auto bg-primary/10 text-primary text-xs font-bold px-2 py-0.5 rounded-full">
-                    {aiMessages.length} {aiMessages.length === 1 ? "message" : "messages"}
+                    {t('messagesCount', { count: aiMessages.length, ns: 'summary' })}
                   </span>
                 )}
               </div>
@@ -298,9 +300,9 @@ export default function MeetingSummaryPage() {
                       <div className="w-14 h-14 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground/50">
                         <MessageSquareText className="w-7 h-7" />
                       </div>
-                      <p className="font-medium text-muted-foreground">Transcript required</p>
+                      <p className="font-medium text-muted-foreground">{t('transcriptRequired', { ns: 'summary' })}</p>
                       <p className="text-sm text-muted-foreground/70 max-w-sm">
-                        Generate a meeting transcript first, then you can ask AI questions about it.
+                        {t('transcriptRequiredDesc', { ns: 'summary' })}
                       </p>
                     </div>
                   ) : aiMessages.length === 0 && !isAskingAi ? (
@@ -315,16 +317,16 @@ export default function MeetingSummaryPage() {
                         </div>
                       </div>
                       <div className="space-y-1.5">
-                        <p className="font-semibold text-foreground">AI Assistant Ready</p>
+                        <p className="font-semibold text-foreground">{t('aiReady', { ns: 'summary' })}</p>
                         <p className="text-sm text-muted-foreground max-w-md">
-                          Ask me anything about this meeting — key decisions, action items, specific topics, or what was discussed. I'll answer based on the transcript.
+                          {t('aiReadyDesc', { ns: 'summary' })}
                         </p>
                       </div>
                       <div className="flex flex-wrap justify-center gap-2 mt-2">
                         {[
-                          "What were the key decisions?",
-                          "Summarize the meeting",
-                          "What action items were assigned?",
+                          t("q1", { ns: "summary" }),
+                          t("q2", { ns: "summary" }),
+                          t("q3", { ns: "summary" }),
                         ].map((suggestion) => (
                           <button
                             key={suggestion}
@@ -387,7 +389,7 @@ export default function MeetingSummaryPage() {
                   <div className="mx-4 mb-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-medium text-xs">Error</p>
+                      <p className="font-medium text-xs">{t("errorTitle", { ns: "summary" })}</p>
                       <p className="text-destructive/80 text-xs">{aiError}</p>
                     </div>
                     <button
@@ -407,7 +409,7 @@ export default function MeetingSummaryPage() {
                       type="text"
                       value={aiQuestion}
                       onChange={(e) => setAiQuestion(e.target.value)}
-                      placeholder={hasTranscript ? "Ask a question about the meeting..." : "Generate a transcript first..."}
+                      placeholder={hasTranscript ? t("askQuestionPlaceholder", { ns: "summary" }) : t("generateFirstPlaceholder", { ns: "summary" })}
                       disabled={!hasTranscript || isAskingAi}
                       className="flex-1 px-4 py-2.5 rounded-xl bg-muted/40 border border-border/60 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     />
@@ -435,7 +437,7 @@ export default function MeetingSummaryPage() {
             <section className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden flex flex-col sticky top-24">
               <div className="p-6 border-b border-border/40 flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-semibold">Action Items</h2>
+                <h2 className="text-xl font-semibold">{t("actionItems", { ns: "summary" })}</h2>
                 <span className="ml-auto bg-primary/10 text-primary text-xs font-bold px-2 py-0.5 rounded-full">
                   {tasks.length}
                 </span>
@@ -447,8 +449,8 @@ export default function MeetingSummaryPage() {
                   </div>
                 ) : tasks.length === 0 ? (
                   <div className="text-center py-12 px-4 space-y-2">
-                    <p className="text-muted-foreground font-medium text-sm">No action items found.</p>
-                    <p className="text-xs text-muted-foreground/70">Tasks assigned during the meeting will appear here.</p>
+                    <p className="text-muted-foreground font-medium text-sm">{t("noActionItems", { ns: "summary" })}</p>
+                    <p className="text-xs text-muted-foreground/70">{t("noActionItemsDesc", { ns: "summary" })}</p>
                   </div>
                 ) : (
                   <ul className="divide-y divide-border/40 max-h-[500px] overflow-y-auto">
@@ -466,7 +468,7 @@ export default function MeetingSummaryPage() {
                             {task.title}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            Added • {task.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {t('added', { ns: 'summary' })} • {task.createdAt?.toDate().toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
                       </li>

@@ -1,11 +1,11 @@
 import { useRef } from "react"
 import { motion, useScroll, useTransform } from "framer-motion"
 import { Search, Download, Share2 } from "lucide-react"
-import { useI18n } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/shared/ui/button"
 
 export function TranscriptSection() {
-  const { t } = useI18n()
+  const { t } = useTranslation()
   const sectionRef = useRef<HTMLDivElement>(null)
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -15,8 +15,10 @@ export function TranscriptSection() {
   const opacity = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0, 1, 1, 0])
   const x = useTransform(scrollYProgress, [0, 0.5], [-50, 0])
 
-  const conversation = t("transcript.conversation") as string[]
-  const speakers = t("transcript.speakers") as string[]
+  const rawConversation = t("transcript.conversation", { returnObjects: true });
+  const conversation = Array.isArray(rawConversation) ? rawConversation : [];
+  const rawSpeakers = t("transcript.speakers", { returnObjects: true });
+  const speakers = Array.isArray(rawSpeakers) ? rawSpeakers : [];
 
   const speakerColors: Record<string, string> = {
     Sarah: "bg-blue-500",

@@ -1,10 +1,10 @@
 import { motion } from "framer-motion"
 import { Github, Twitter, Linkedin } from "lucide-react"
-import { useI18n } from "@/shared/lib/i18n"
+import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
 export function Footer() {
-  const { t } = useI18n()
+  const { t } = useTranslation()
 
 
   return (

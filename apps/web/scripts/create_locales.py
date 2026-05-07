@@ -1,30 +1,18 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react"
+import os
+import json
 
-export type Locale = "en" | "tr"
-
-type TranslationValue = string | Record<string, string | string[]> | string[]
-
-interface Translations {
-  [key: string]: TranslationValue
-}
-
-const translations: Record<Locale, Translations> = {
-  en: {
-    // Header
+translations = {
+  "en": {
     "nav.features": "Features",
     "nav.product": "Product",
     "nav.pricing": "Pricing",
     "nav.download": "Download",
     "nav.getStarted": "Get Started",
     "nav.dashboard": "Dashboard",
-    
-    // Hero
     "hero.title": "Meet. Decide. Assign.",
     "hero.subtitle": "AI-powered meetings that transform conversations into actionable outcomes. Capture every insight, assign tasks automatically, and never lose a decision again.",
     "hero.cta": "Start Free Trial",
     "hero.watchDemo": "Watch Demo",
-    
-    // Meeting Preview
     "meeting.title": "Experience the Future of Meetings",
     "meeting.subtitle": "See how AI transforms your meetings in real-time",
     "meeting.live": "Live",
@@ -38,8 +26,6 @@ const translations: Record<Locale, Translations> = {
       "task3": "Send updated proposal to client"
     },
     "meeting.assignees": ["Sarah", "Mike", "You"],
-    
-    // Tasks
     "tasks.title": "Tasks That Assign Themselves",
     "tasks.subtitle": "AI automatically detects commitments and creates actionable tasks",
     "tasks.card1.title": "Prepare presentation slides",
@@ -54,54 +40,40 @@ const translations: Record<Locale, Translations> = {
     "tasks.card3.assignee": "You",
     "tasks.card3.due": "Today",
     "tasks.card3.priority": "High",
-    
-    // Transcript
     "transcript.title": "Every Word, Perfectly Captured",
     "transcript.subtitle": "Real-time transcription with speaker identification",
     "transcript.conversation": [
       "I think we should move forward with the new design.",
-      "Agreed. Let&apos;s schedule a review for next week.",
-      "I&apos;ll take care of the presentation slides.",
-      "Perfect. And I&apos;ll handle the budget analysis."
+      "Agreed. Let's schedule a review for next week.",
+      "I'll take care of the presentation slides.",
+      "Perfect. And I'll handle the budget analysis."
     ],
     "transcript.speakers": ["Sarah", "Mike", "Sarah", "Alex"],
-    
-    // AI Q&A
     "ai.title": "Ask Anything About Your Meetings",
     "ai.subtitle": "Get instant answers from your meeting history",
     "ai.placeholder": "Ask about decisions, action items, or discussions...",
     "ai.question": "What were the key decisions from last week?",
     "ai.answer": "Based on your meetings last week, there were 3 key decisions: 1) Approved the Q4 marketing budget of $50,000, 2) Decided to launch the new feature on November 15th, 3) Agreed to hire two additional developers for the mobile team.",
-    
-    // Cross-platform
     "platform.title": "Available Everywhere",
     "platform.subtitle": "Seamless experience across all your devices",
     "platform.web": "Web App",
     "platform.mobile": "Mobile App",
     "platform.desktop": "Desktop App",
-    
-    // CTA
     "cta.title": "Ready to Transform Your Meetings?",
     "cta.subtitle": "Join thousands of teams already saving hours every week",
     "cta.button": "Get Started Free",
     "cta.note": "No credit card required",
-    
-    // Footer
     "footer.product": "Product",
     "footer.company": "Company",
     "footer.resources": "Resources",
     "footer.legal": "Legal",
     "footer.copyright": "© 2024 MeetAI. All rights reserved.",
     "footer.tagline": "Transform your meetings into actionable outcomes with AI-powered intelligence.",
-
-    // Auth Panel
     "auth.panel.title": "Transform Your Meetings with AI",
     "auth.panel.subtitle": "Smart meetings that capture insights, assign tasks automatically, and keep your team aligned.",
     "auth.panel.feature1": "AI-powered real-time transcription",
     "auth.panel.feature2": "Automatic task detection & assignment",
     "auth.panel.feature3": "Enterprise-grade security & privacy",
-
-    // Auth Login
     "auth.login.title": "Welcome back",
     "auth.login.subtitle": "Sign in to your account to continue",
     "auth.login.email": "Email",
@@ -113,8 +85,6 @@ const translations: Record<Locale, Translations> = {
     "auth.login.noAccount": "Don't have an account?",
     "auth.login.register": "Sign up",
     "auth.login.forgotPassword": "Forgot password?",
-
-    // Auth Register
     "auth.register.title": "Create an account",
     "auth.register.subtitle": "Sign up to get started with Meet.ai",
     "auth.register.name": "Full Name",
@@ -129,30 +99,23 @@ const translations: Record<Locale, Translations> = {
     "auth.register.submitting": "Creating account...",
     "auth.register.haveAccount": "Already have an account?",
     "auth.register.login": "Sign in",
-
-    // Auth Errors
     "auth.error.invalidEmail": "Please enter a valid email address.",
     "auth.error.passwordMin": "Password must be at least 6 characters.",
     "auth.error.passwordMatch": "Passwords do not match.",
     "auth.error.nameRequired": "Please enter your name.",
-    "auth.error.generic": "Something went wrong. Please try again.",
+    "auth.error.generic": "Something went wrong. Please try again."
   },
-  tr: {
-    // Header
+  "tr": {
     "nav.features": "Özellikler",
     "nav.product": "Ürün",
     "nav.pricing": "Fiyatlandırma",
     "nav.download": "İndir",
     "nav.getStarted": "Başla",
     "nav.dashboard": "Panel",
-    
-    // Hero
     "hero.title": "Topla. Karar Ver. Ata.",
     "hero.subtitle": "Konuşmaları eyleme dönüştüren yapay zeka destekli toplantılar. Her fikri yakalayın, görevleri otomatik atayın ve bir kararı bir daha kaçırmayın.",
     "hero.cta": "Ücretsiz Deneyin",
     "hero.watchDemo": "Demo İzle",
-    
-    // Meeting Preview
     "meeting.title": "Toplantıların Geleceğini Deneyimleyin",
     "meeting.subtitle": "Yapay zekanın toplantılarınızı gerçek zamanlı nasıl dönüştürdüğünü görün",
     "meeting.live": "Canlı",
@@ -166,8 +129,6 @@ const translations: Record<Locale, Translations> = {
       "task3": "Güncellenmiş teklifi müşteriye gönder"
     },
     "meeting.assignees": ["Ayşe", "Mehmet", "Sen"],
-    
-    // Tasks
     "tasks.title": "Kendini Atayan Görevler",
     "tasks.subtitle": "Yapay zeka otomatik olarak taahhütleri algılar ve eyleme geçirilebilir görevler oluşturur",
     "tasks.card1.title": "Sunum slaytlarını hazırla",
@@ -182,8 +143,6 @@ const translations: Record<Locale, Translations> = {
     "tasks.card3.assignee": "Sen",
     "tasks.card3.due": "Bugün",
     "tasks.card3.priority": "Yüksek",
-    
-    // Transcript
     "transcript.title": "Her Kelime, Mükemmel Şekilde Yakalandı",
     "transcript.subtitle": "Konuşmacı tanımlama ile gerçek zamanlı transkript",
     "transcript.conversation": [
@@ -193,43 +152,31 @@ const translations: Record<Locale, Translations> = {
       "Mükemmel. Ben de bütçe analizini üstlenirim."
     ],
     "transcript.speakers": ["Ayşe", "Mehmet", "Ayşe", "Ali"],
-    
-    // AI Q&A
     "ai.title": "Toplantılarınız Hakkında Her Şeyi Sorun",
     "ai.subtitle": "Toplantı geçmişinizden anında cevaplar alın",
     "ai.placeholder": "Kararlar, yapılacaklar veya tartışmalar hakkında sorun...",
     "ai.question": "Geçen haftanın önemli kararları nelerdi?",
-    "ai.answer": "Geçen haftaki toplantılarınıza göre 3 önemli karar alındı: 1) 50.000₺&apos;lik 4. çeyrek pazarlama bütçesi onaylandı, 2) Yeni özelliğin 15 Kasım&apos;da başlatılmasına karar verildi, 3) Mobil ekibi için iki ek geliştirici alınması kararlaştırıldı.",
-    
-    // Cross-platform
+    "ai.answer": "Geçen haftaki toplantılarınıza göre 3 önemli karar alındı: 1) 50.000₺'lik 4. çeyrek pazarlama bütçesi onaylandı, 2) Yeni özelliğin 15 Kasım'da başlatılmasına karar verildi, 3) Mobil ekibi için iki ek geliştirici alınması kararlaştırıldı.",
     "platform.title": "Her Yerde Kullanılabilir",
     "platform.subtitle": "Tüm cihazlarınızda kesintisiz deneyim",
     "platform.web": "Web Uygulaması",
     "platform.mobile": "Mobil Uygulama",
     "platform.desktop": "Masaüstü Uygulama",
-    
-    // CTA
     "cta.title": "Toplantılarınızı Dönüştürmeye Hazır mısınız?",
     "cta.subtitle": "Her hafta saatler tasarruf eden binlerce ekibe katılın",
     "cta.button": "Ücretsiz Başla",
     "cta.note": "Kredi kartı gerekmez",
-    
-    // Footer
     "footer.product": "Ürün",
     "footer.company": "Şirket",
     "footer.resources": "Kaynaklar",
     "footer.legal": "Yasal",
     "footer.copyright": "© 2024 MeetAI. Tüm hakları saklıdır.",
     "footer.tagline": "Toplantılarınızı yapay zeka ile eyleme dönüştürün.",
-
-    // Auth Panel
     "auth.panel.title": "Toplantılarınızı AI ile Dönüştürün",
     "auth.panel.subtitle": "İçgörüleri yakalayan, görevleri otomatik atayan ve ekibinizi uyumlu tutan akıllı toplantılar.",
     "auth.panel.feature1": "AI destekli gerçek zamanlı transkript",
     "auth.panel.feature2": "Otomatik görev algılama ve atama",
     "auth.panel.feature3": "Kurumsal düzeyde güvenlik ve gizlilik",
-
-    // Auth Login
     "auth.login.title": "Tekrar hoş geldiniz",
     "auth.login.subtitle": "Devam etmek için hesabınıza giriş yapın",
     "auth.login.email": "E-posta",
@@ -241,8 +188,6 @@ const translations: Record<Locale, Translations> = {
     "auth.login.noAccount": "Hesabınız yok mu?",
     "auth.login.register": "Kayıt olun",
     "auth.login.forgotPassword": "Şifrenizi mi unuttunuz?",
-
-    // Auth Register
     "auth.register.title": "Hesap oluşturun",
     "auth.register.subtitle": "Meet.ai ile başlamak için kayıt olun",
     "auth.register.name": "Ad Soyad",
@@ -257,50 +202,23 @@ const translations: Record<Locale, Translations> = {
     "auth.register.submitting": "Hesap oluşturuluyor...",
     "auth.register.haveAccount": "Zaten hesabınız var mı?",
     "auth.register.login": "Giriş yapın",
-
-    // Auth Errors
     "auth.error.invalidEmail": "Lütfen geçerli bir e-posta adresi girin.",
     "auth.error.passwordMin": "Şifre en az 6 karakter olmalıdır.",
     "auth.error.passwordMatch": "Şifreler eşleşmiyor.",
     "auth.error.nameRequired": "Lütfen adınızı girin.",
-    "auth.error.generic": "Bir şeyler yanlış gitti. Lütfen tekrar deneyin.",
-  },
-}
-
-interface I18nContextType {
-  locale: Locale
-  setLocale: (locale: Locale) => void
-  t: (key: string) => string | string[] | Record<string, string | string[]>
-}
-
-const I18nContext = createContext<I18nContextType | undefined>(undefined)
-
-export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>("en")
-
-  const t = useCallback(
-    (key: string): string | string[] | Record<string, string | string[]> => {
-      const value = translations[locale][key]
-      if (value === undefined) {
-        console.warn(`Translation missing for key: ${key}`)
-        return key
-      }
-      return value
-    },
-    [locale]
-  )
-
-  return (
-    <I18nContext.Provider value={{ locale, setLocale, t }}>
-      {children}
-    </I18nContext.Provider>
-  )
-}
-
-export function useI18n() {
-  const context = useContext(I18nContext)
-  if (context === undefined) {
-    throw new Error("useI18n must be used within an I18nProvider")
+    "auth.error.generic": "Bir şeyler yanlış gitti. Lütfen tekrar deneyin."
   }
-  return context
 }
+
+base_dir = r"c:\Users\omerc\Downloads\meet.ai\apps\web\public\locales"
+
+for lang, data in translations.items():
+    lang_dir = os.path.join(base_dir, lang)
+    os.makedirs(lang_dir, exist_ok=True)
+    
+    # We will put all old translations into common.json for now to keep things from breaking.
+    # We can split them later or just keep them in common if they are not too big.
+    with open(os.path.join(lang_dir, 'common.json'), 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+print("Created locale files.")
