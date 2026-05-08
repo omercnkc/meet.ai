@@ -10,10 +10,14 @@ import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from firebase_admin import firestore
 from app.integrations.firebase_admin import verify_firebase_token
 from app.services.supabase_service import upload_recording, get_recordings_by_meeting
 
 logger = logging.getLogger(__name__)
+
+def get_firestore_db():
+    return firestore.client()
 
 router = APIRouter(prefix="/api/recordings", tags=["Recordings"])
 
@@ -109,6 +113,7 @@ async def upload_recording_endpoint(
     summary="Get recording metadata for a meeting",
     responses={
         401: {"description": "Missing or invalid Firebase ID token"},
+        202: {"description": "Recording is still being processed"},
         404: {"description": "No recordings found for this meeting"},
     },
 )
@@ -131,10 +136,47 @@ async def get_recordings_endpoint(
         )
 
     if not recordings:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No recordings found for this meeting.",
-        )
+        # Check meeting status in Firestore to determine if we should return 202 or 404
+        try:
+            db = get_firestore_db()
+            meeting_doc = db.collection("meetings").document(meetingId).get()
+            
+            if meeting_doc.exists:
+                meeting_data = meeting_doc.to_dict()
+                status_str = meeting_data.get("status")
+                
+                # If meeting is still active or just ended, it might be processing
+                # For simplicity, if it exists but no recording yet, return 202
+                # if the status is 'active' or if it was created recently.
+                if status_str == "active":
+                    raise HTTPException(
+                        status_code=status.HTTP_202_ACCEPTED,
+                        detail="Meeting is still active. Recording not yet available.",
+                    )
+                
+                # If it ended very recently (e.g., within the last 2 minutes), return 202
+                # (This is a heuristic since we don't have endedAt in the schema)
+                # For now, let's just return 202 if it's 'ended' but no recording yet,
+                # giving it a chance to be uploaded.
+                raise HTTPException(
+                    status_code=status.HTTP_202_ACCEPTED,
+                    detail="Recording is still being processed.",
+                )
+            else:
+                # Meeting doesn't even exist in Firestore
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Meeting not found.",
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("[Recordings] Firestore check failed: %s", exc)
+            # Fallback to 404
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No recordings found for this meeting.",
+            )
 
     return [
         {

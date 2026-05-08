@@ -3,19 +3,17 @@ import { db } from "../config"
 
 export type Meeting = {
   id: string
+  userId: string
   title: string
-  hostId: string
-  participantIds: string[]
   status: "active" | "ended" | "scheduled"
   createdAt: Timestamp | null
   endedAt?: Timestamp | null
 }
 
-export async function createMeeting(hostId: string, title: string) {
+export async function createMeeting(userId: string, title: string) {
   const newMeeting = {
     title,
-    hostId,
-    participantIds: [hostId],
+    userId,
     status: "active",
     createdAt: serverTimestamp()
   }
@@ -32,7 +30,7 @@ export async function createMeeting(hostId: string, title: string) {
 export function subscribeToMeetings(userId: string, onUpdate: (meetings: Meeting[]) => void) {
   const q = query(
     collection(db, "meetings"),
-    where("participantIds", "array-contains", userId)
+    where("userId", "==", userId)
   )
   
   return onSnapshot(q, (snapshot) => {

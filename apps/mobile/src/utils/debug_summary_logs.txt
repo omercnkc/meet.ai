@@ -1,0 +1,21 @@
+[MeetingSummaryScreen] loadData START
+Meeting ID: abc-123-def
+Auth Token Present: true
+API Base URL: http://192.168.1.10:8000
+Meeting Status: ended
+[API Call] GET /api/recordings/abc-123-def
+[MeetingSummaryScreen] Recording not found (202). Setting pending state.
+[API Call] GET /api/transcripts/abc-123-def
+[MeetingSummaryScreen] Transcript not found (202).
+--- [MeetingSummaryScreen] loadData SUCCESS ---
+
+[MeetingSummaryScreen] Auto-retrying loadData (Attempt 1/5)...
+[API Call] GET /api/recordings/abc-123-def
+[MeetingSummaryScreen] Recording not found (202). Setting pending state.
+...
+[MeetingSummaryScreen] Auto-retrying loadData (Attempt 2/5)...
+[API Call] GET /api/recordings/abc-123-def
+[MeetingSummaryScreen] loadData SUCCESS
+Recording ready found: 1
+Transcript found: 1
+--- [MeetingSummaryScreen] loadData SUCCESS ---

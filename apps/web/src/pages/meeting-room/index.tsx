@@ -64,7 +64,17 @@ export default function MeetingRoomPage() {
   }, [meeting?.status, meetingId, navigate])
 
   // ─── LiveKit Token ───
-  const isGuest = meeting && currentUser ? currentUser.uid !== meeting.hostId && !meeting.participantIds.includes(currentUser.uid) : false;
+  const isGuest = meeting && currentUser ? (() => {
+    // DEVELOPMENT LOG: Check if participantIds exists due to mobile schema sync
+    if (import.meta.env.DEV && meeting.participantIds === undefined) {
+      console.warn("Meeting.participantIds is undefined. Schema might have been updated to single userId.");
+    }
+    
+    const hostId = (meeting as any).hostId || meeting.userId;
+    const participants = (meeting as any).participantIds || [];
+    
+    return currentUser.uid !== hostId && !(Array.isArray(participants) && participants.includes(currentUser.uid));
+  })() : false;
 
   useEffect(() => {
     if (!meeting || !currentUser || !meetingId) return
@@ -380,7 +390,7 @@ export default function MeetingRoomPage() {
       {meeting && (
         <AdmissionControlListener 
           meetingId={meetingId!} 
-          hostId={meeting.hostId} 
+          hostId={(meeting as any).hostId || meeting.userId} 
           currentUserId={currentUser?.uid} 
         />
       )}
@@ -401,7 +411,7 @@ export default function MeetingRoomPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium hidden sm:block bg-muted px-3 py-1.5 rounded-md text-muted-foreground">
-            {t("participantsCount", { count: meeting.participantIds.length })}
+            {t("participantsCount", { count: Array.isArray((meeting as any).participantIds) ? (meeting as any).participantIds.length : 1 })}
           </span>
           <button
             onClick={handleShareInvite}
@@ -440,7 +450,7 @@ export default function MeetingRoomPage() {
       {/* Bottom Controls */}
       <MeetingControls
         onLeave={handleLeave}
-        onEndMeeting={meeting.hostId === currentUser?.uid ? handleEndMeeting : undefined}
+        onEndMeeting={((meeting as any).hostId || meeting.userId) === currentUser?.uid ? handleEndMeeting : undefined}
         onScreenShareWithPip={handleScreenShareToggle}
         recordingState={recorder.state}
         recordingElapsed={recorder.elapsed}
