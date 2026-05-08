@@ -31,7 +31,14 @@ const translations = {
     assignedToPrefix: "Assigned to:",
     you: "You",
     unassigned: "Unassigned",
-    taskHint: "Tasks from your ended meetings will appear here."
+    taskHint: "Tasks from your ended meetings will appear here.",
+    leave: "Leave",
+    endMeeting: "End Meeting",
+    connecting: "Connecting...",
+    roomError: "Failed to connect to room",
+    record: "Record",
+    stop: "Stop",
+    recording: "Recording..."
   },
   tr: {
     welcomeTitle: "Merhaba, {name}",
@@ -60,7 +67,14 @@ const translations = {
     assignedToPrefix: "Atanan:",
     you: "Siz",
     unassigned: "Atanmamış",
-    taskHint: "Biten toplantılarınızdaki görevler burada görünecektir."
+    taskHint: "Biten toplantılarınızdaki görevler burada görünecektir.",
+    leave: "Ayrıl",
+    endMeeting: "Toplantıyı Bitir",
+    connecting: "Bağlanıyor...",
+    roomError: "Odaya bağlanılamadı",
+    record: "Kaydet",
+    stop: "Durdur",
+    recording: "Kaydediliyor..."
   }
 };
 
