@@ -15,6 +15,7 @@ export function GuestAdmissionFlow({
   currentUser: User,
   onAdmitted: (token: string) => void
 }) {
+  const { t } = useTranslation("meeting");
   const [waitingToken, setWaitingToken] = useState<string | null>(null);
   const [status, setStatus] = useState<"requesting" | "waiting" | "rejected" | "timeout">("requesting");
 

@@ -22,6 +22,7 @@ export interface Meeting {
   title: string;
   status: "active" | "ended";
   createdAt: Timestamp;
+  endedAt?: Timestamp;
 }
 
 export function subscribeToMeetings(
@@ -112,7 +113,7 @@ export async function createMeeting(userId: string, title: string): Promise<Meet
 
 export async function endMeeting(meetingId: string) {
   const docRef = doc(db, "meetings", meetingId);
-  await updateDoc(docRef, { status: "ended" });
+  await updateDoc(docRef, { status: "ended", endedAt: Timestamp.now() });
 }
 
 export async function getMeeting(meetingId: string): Promise<Meeting | null> {
@@ -122,4 +123,31 @@ export async function getMeeting(meetingId: string): Promise<Meeting | null> {
     return { id: snapshot.id, ...snapshot.data() } as Meeting;
   }
   return null;
+}
+
+/**
+ * Realtime subscription for a single meeting document.
+ * Mirrors the web's `subscribeToMeeting` (onSnapshot) behaviour.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToMeeting(
+  meetingId: string,
+  callback: (meeting: Meeting | null) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const docRef = doc(db, "meetings", meetingId);
+  return onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        callback({ id: snapshot.id, ...snapshot.data() } as Meeting);
+      } else {
+        callback(null);
+      }
+    },
+    (error) => {
+      console.warn("[subscribeToMeeting] Snapshot error:", error.message);
+      onError?.(error);
+    }
+  );
 }

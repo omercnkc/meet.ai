@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing, typography, borderRadius } from "../theme";
 import { useAuth } from "../hooks/useAuth";
@@ -28,7 +28,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "MeetingSummary">;
 export default function MeetingSummaryScreen({ route, navigation }: Props) {
   const { meetingId } = route.params;
   const { colors } = useTheme();
-  const { currentUser } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
 
   const [meeting, setMeeting] = useState<any>(null);
   const [recordings, setRecordings] = useState<Recording[]>([]);
@@ -38,7 +38,8 @@ export default function MeetingSummaryScreen({ route, navigation }: Props) {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [addingTask, setAddingTask] = useState(false);
 
-  const { tasks, loading: tasksLoading } = useTasks(meetingId);  const [errorState, setErrorState] = useState<string | null>(null);
+  const { tasks, loading: tasksLoading } = useTasks(meetingId);
+  const [errorState, setErrorState] = useState<string | null>(null);
   const [isRecordingPending, setIsRecordingPending] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const MAX_RETRIES = 5;
@@ -138,11 +139,26 @@ export default function MeetingSummaryScreen({ route, navigation }: Props) {
   };
 
   const handleAddTask = async () => {
-    // We could add an inline task creation here like in web
-    // For now, let's just keep it simple
+    if (!newTaskTitle.trim() || !currentUser) return;
+    setAddingTask(true);
+    try {
+      const uid = currentUser.uid ?? (currentUser as any).userId;
+      await createTask(meetingId, newTaskTitle.trim(), uid);
+      setNewTaskTitle("");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to add task");
+    } finally {
+      setAddingTask(false);
+    }
   };
 
-  if (loadingMeeting) return <LoadingState message="Loading meeting summary..." />;
+  if (authLoading || loadingMeeting) return <LoadingState message="Loading meeting summary..." />;
+
+  if (!currentUser) return <LoadingState message="Authenticating..." />;
+
+  const userId = currentUser.uid ?? (currentUser as any).userId;
+
+  if (!userId) return <LoadingState message="Resolving user..." />;
 
   if (errorState) {
     return (
@@ -194,6 +210,26 @@ export default function MeetingSummaryScreen({ route, navigation }: Props) {
               </Text>
             </View>
           </View>
+
+          {meeting?.endedAt && (
+            <View>
+              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Ended At</Text>
+              <Text style={[styles.infoValue, { color: colors.foreground }]}>
+                {meeting.endedAt.toDate().toLocaleString()}
+              </Text>
+            </View>
+          )}
+
+          {meeting?.status === "active" && (
+            <AppButton
+              title="Join Live Meeting"
+              variant="primary"
+              size="sm"
+              icon={<Ionicons name="videocam" size={16} color="#fff" />}
+              onPress={() => navigation.replace("ActiveMeeting", { meetingId })}
+              style={{ marginTop: spacing.sm, backgroundColor: colors.success }}
+            />
+          )}
         </AppCard>
       </View>
 
@@ -271,6 +307,23 @@ export default function MeetingSummaryScreen({ route, navigation }: Props) {
           <Ionicons name="checkbox-outline" size={20} color={colors.primary} />
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Action Items</Text>
         </View>
+        {/* Task creation input */}
+        <View style={styles.inputRow}>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.secondary, color: colors.foreground }]}
+            placeholder="Add a task..."
+            placeholderTextColor={colors.mutedForeground}
+            value={newTaskTitle}
+            onChangeText={setNewTaskTitle}
+          />
+          <AppButton
+            title="Add"
+            size="sm"
+            onPress={handleAddTask}
+            loading={addingTask}
+            disabled={!newTaskTitle.trim()}
+          />
+        </View>
         {tasks.length === 0 ? (
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No tasks found.</Text>
         ) : (
@@ -343,5 +396,18 @@ const styles = StyleSheet.create({
   metaText: {
     ...typography.caption,
     marginTop: 2,
+  },
+  inputRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  input: {
+    flex: 1,
+    height: 40,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    fontSize: 14,
   },
 });

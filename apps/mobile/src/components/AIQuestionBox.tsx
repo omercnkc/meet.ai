@@ -123,9 +123,27 @@ export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
           fetching ? (
             <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
           ) : (
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              Ask anything about this meeting's transcript!
-            </Text>
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                Ask anything about this meeting's transcript!
+              </Text>
+              {/* Suggested question chips */}
+              <View style={styles.chipsRow}>
+                {[
+                  "What were the main topics discussed?",
+                  "What action items were identified?",
+                  "Summarize the key decisions made.",
+                ].map((suggestion) => (
+                  <TouchableOpacity
+                    key={suggestion}
+                    style={[styles.chip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
+                    onPress={() => setQuestion(suggestion)}
+                  >
+                    <Text style={[styles.chipText, { color: colors.primary }]}>{suggestion}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           )
         }
       />
@@ -215,6 +233,28 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: spacing["5xl"],
     opacity: 0.6,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+  },
+  chipsRow: {
+    flexDirection: "column",
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    width: "100%",
+  },
+  chip: {
+    borderWidth: 1,
+    borderRadius: borderRadius.xl,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: "500",
+    textAlign: "center",
   },
   loadingRow: {
     flexDirection: "row",

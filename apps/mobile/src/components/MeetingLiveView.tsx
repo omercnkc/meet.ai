@@ -17,7 +17,7 @@ interface Props {
 export function MeetingLiveView({ url, token, onLeave, onEndMeeting }: Props) {
   const { colors } = useTheme();
   const { t } = useTranslation();
-  const { room } = useRoom({}) as any;
+  const { room } = useRoom({} as any) as any;
   const participants = useParticipants();
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
   const isConnecting = room?.state === "connecting";

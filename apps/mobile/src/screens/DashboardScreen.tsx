@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing, typography, borderRadius } from "../theme";
 import { useAuth } from "../hooks/useAuth";
@@ -22,7 +22,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Dashboard">;
 export default function DashboardScreen({ navigation }: Props) {
   const { colors, mode, setMode, isDark } = useTheme();
   const { t, lang, setLanguage } = useTranslation();
-  const { currentUser, signOut } = useAuth();
+  const { currentUser, loading: authLoading, signOut } = useAuth();
   const { meetings, loading: meetingsLoading } = useMeetings(currentUser?.uid);
   
   const [isCreating, setIsCreating] = useState(false);
@@ -34,10 +34,12 @@ export default function DashboardScreen({ navigation }: Props) {
   
   const handleCreateMeeting = async () => {
     if (!currentUser) return;
+    const uid = currentUser.uid ?? (currentUser as any).userId;
+    if (!uid) return;
     setIsCreating(true);
     try {
       const userName = currentUser.displayName || currentUser.email?.split("@")[0] || "User";
-      const meeting = await createMeeting(currentUser.uid, `${userName}'s Meeting`);
+      const meeting = await createMeeting(uid, `${userName}'s Meeting`);
       navigation.navigate("ActiveMeeting", { meetingId: meeting.id });
     } catch (error) {
       console.error("Failed to create meeting", error);
@@ -51,174 +53,278 @@ export default function DashboardScreen({ navigation }: Props) {
   };
 
   const toggleTheme = () => {
-    const nextMode = mode === "light" ? "dark" : mode === "dark" ? "system" : "light";
-    setMode(nextMode);
+    setMode(isDark ? "light" : "dark");
   };
 
-  if (meetingsLoading) return <LoadingState message="Loading your dashboard..." />;
+  const { width } = useWindowDimensions();
+  const isTablet = width > 768;
 
-  const displayName = currentUser?.displayName || currentUser?.email?.split("@")[0] || "User";
+  if (authLoading || meetingsLoading) return <LoadingState message="Loading your dashboard..." />;
+
+  if (!currentUser) return <EmptyState title="Not Authenticated" description="Please log in again." icon="lock-closed-outline" />;
+
+  const userId = currentUser.uid ?? (currentUser as any).userId;
+
+  if (!userId) return <EmptyState title="User ID missing" description="Could not resolve authenticated user ID." icon="warning-outline" />;
+
+  const displayName = currentUser.displayName || currentUser.email?.split("@")[0] || "User";
+
+  const meetingsContent = (
+    <AppCard style={styles.meetingsCard} padded={false}>
+      <View style={[styles.cardHeader, { borderBottomColor: colors.border + "44", borderBottomWidth: 1, paddingHorizontal: spacing.lg, paddingVertical: spacing.md }]}>
+        <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+        <Text style={[styles.cardTitle, { color: colors.foreground }]}>{t("recentMeetings")}</Text>
+      </View>
+      {meetings.length === 0 ? (
+        <EmptyState
+          icon="videocam-outline"
+          title={t("noMeetingsTitle")}
+          description={t("noMeetingsDesc")}
+          action={
+            <TouchableOpacity onPress={handleCreateMeeting} style={styles.emptyAction}>
+              <Ionicons name="add" size={16} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: "600", marginLeft: 4 }}>{t("startFirstMeeting")}</Text>
+            </TouchableOpacity>
+          }
+        />
+      ) : (
+        <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled={true} showsVerticalScrollIndicator={false}>
+          {meetings.slice(0, 10).map((m) => (
+            <MeetingCard
+              key={m.id}
+              meeting={m}
+              displayName={displayName}
+              onPress={(meeting) => {
+                if (meeting.status === "active") {
+                  navigation.navigate("ActiveMeeting", { meetingId: meeting.id });
+                } else {
+                  navigation.navigate("MeetingSummary", { meetingId: meeting.id });
+                }
+              }}
+            />
+          ))}
+        </ScrollView>
+      )}
+    </AppCard>
+  );
+
+  const openTasksContent = (
+    <AppCard style={styles.tasksCard} padded={false}>
+      <View style={[styles.cardHeader, { borderBottomColor: colors.border + "44", borderBottomWidth: 1, paddingHorizontal: spacing.lg, paddingVertical: spacing.md }]}>
+        <Ionicons name="checkbox-outline" size={20} color={colors.primary} />
+        <Text style={[styles.cardTitle, { color: colors.foreground }]}>{t("openTasksTitle")}</Text>
+      </View>
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md }}>
+        {openTasks.length === 0 ? (
+          <View style={styles.taskHintContainer}>
+            <Text style={[styles.taskHint, { color: colors.mutedForeground }]}>
+              {t("noOpenTasks")}
+            </Text>
+          </View>
+        ) : (
+          <ScrollView style={{ maxHeight: 120 }} nestedScrollEnabled={true} showsVerticalScrollIndicator={false}>
+            {openTasks.slice(0, 10).map((task) => {
+              const taskMeeting = meetings.find((m) => m.id === task.meetingId);
+              return (
+                <TaskCard 
+                  key={task.id} 
+                  task={task} 
+                  meeting={taskMeeting} 
+                  currentUserId={currentUser?.uid}
+                />
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
+    </AppCard>
+  );
+
+  const completedTasksContent = (
+    <AppCard style={styles.tasksCard} padded={false}>
+      <View style={[styles.cardHeader, { borderBottomColor: colors.border + "44", borderBottomWidth: 1, paddingHorizontal: spacing.lg, paddingVertical: spacing.md }]}>
+        <Ionicons name="checkmark-circle-outline" size={20} color="#22c55e" />
+        <Text style={[styles.cardTitle, { color: colors.foreground }]}>{t("completedTasksTitle")}</Text>
+      </View>
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md }}>
+        {doneTasks.length === 0 ? (
+          <View style={styles.taskHintContainer}>
+            <Text style={[styles.taskHint, { color: colors.mutedForeground }]}>
+              {t("noCompletedTasks")}
+            </Text>
+          </View>
+        ) : (
+          <ScrollView style={{ maxHeight: 120 }} nestedScrollEnabled={true} showsVerticalScrollIndicator={false}>
+            {doneTasks.slice(0, 10).map((task) => {
+              const taskMeeting = meetings.find((m) => m.id === task.meetingId);
+              return (
+                <TaskCard 
+                  key={task.id} 
+                  task={task} 
+                  meeting={taskMeeting} 
+                  currentUserId={currentUser?.uid}
+                />
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
+    </AppCard>
+  );
 
   return (
     <ScreenContainer scrollable>
-      <View style={styles.header}>
-        <View style={{ flex: 1, marginRight: spacing.md }}>
-          <Text style={[styles.welcome, { color: colors.foreground }]} numberOfLines={1}>
-            {t("welcomeTitle", { name: displayName })}
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]} numberOfLines={1}>
-            {t("welcomeSubtitle")}
-          </Text>
-        </View>
+      {/* Top Navbar */}
+      <View style={styles.navbar}>
+        <Text style={[styles.logoText, { color: colors.foreground }]}>
+          meet<Text style={{ color: colors.primary }}>.ai</Text>
+        </Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity onPress={toggleLanguage} style={styles.actionBtn}>
-            <Text style={{ color: colors.primary, fontWeight: "bold", fontSize: 14 }}>
+          <TouchableOpacity onPress={toggleLanguage} style={[styles.actionBtn, { backgroundColor: colors.secondary }]}>
+            <Text style={{ color: colors.foreground, fontWeight: "600", fontSize: 13 }}>
               {lang.toUpperCase()}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={toggleTheme} style={styles.actionBtn}>
+          <TouchableOpacity onPress={toggleTheme} style={[styles.actionBtn, { backgroundColor: colors.secondary }]}>
             <Ionicons 
-              name={mode === "dark" ? "moon" : mode === "light" ? "sunny" : "settings-outline"} 
-              size={20} 
-              color={colors.mutedForeground} 
+              name={isDark ? "sunny-outline" : "moon-outline"} 
+              size={18} 
+              color={colors.foreground} 
             />
           </TouchableOpacity>
-          <TouchableOpacity onPress={signOut} style={styles.actionBtn}>
-            <Ionicons name="log-out-outline" size={20} color={colors.mutedForeground} />
+          <TouchableOpacity onPress={signOut} style={[styles.actionBtn, { backgroundColor: colors.secondary }]}>
+            <Ionicons name="log-out-outline" size={18} color={colors.destructive} />
           </TouchableOpacity>
         </View>
       </View>
 
+      {/* Greeting Banner */}
+      <View style={styles.welcomeContainer}>
+        <Text style={[styles.welcome, { color: colors.foreground }]}>
+          {t("welcomeTitle", { name: displayName })}
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+          {t("welcomeSubtitle")}
+        </Text>
+      </View>
+
+      {/* Main CTA */}
       <AppButton
         title={isCreating ? t("startingMeeting") : t("startMeeting")}
         onPress={handleCreateMeeting}
         loading={isCreating}
         size="md"
         icon={<Ionicons name="videocam" size={20} color={colors.primaryForeground} />}
-        style={{ marginBottom: spacing["2xl"] }}
+        style={{ marginBottom: spacing.xl }}
       />
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="calendar-outline" size={20} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("recentMeetings")}</Text>
+      {/* Responsive Dashboard Grid */}
+      {isTablet ? (
+        <View style={styles.tabletLayout}>
+          <View style={styles.leftColumn}>
+            {meetingsContent}
+          </View>
+          <View style={styles.rightColumn}>
+            {openTasksContent}
+            {completedTasksContent}
+          </View>
         </View>
-        <AppCard style={styles.meetingsCard} padded={false}>
-          {meetings.length === 0 ? (
-            <EmptyState
-              icon="videocam-outline"
-              title={t("noMeetingsTitle")}
-              description={t("noMeetingsDesc")}
-              action={
-                <TouchableOpacity onPress={handleCreateMeeting} style={styles.emptyAction}>
-                  <Ionicons name="add" size={16} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontWeight: "600", marginLeft: 4 }}>{t("startFirstMeeting")}</Text>
-                </TouchableOpacity>
-              }
-            />
-          ) : (
-            meetings.slice(0, 5).map((m) => (
-              <MeetingCard
-                key={m.id}
-                meeting={m}
-                displayName={displayName}
-                onPress={(meeting) => {
-                  if (meeting.status === "active") {
-                    navigation.navigate("ActiveMeeting", { meetingId: meeting.id });
-                  } else {
-                    navigation.navigate("MeetingSummary", { meetingId: meeting.id });
-                  }
-                }}
-              />
-            ))
-          )}
-        </AppCard>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="checkbox-outline" size={20} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("openTasksTitle")}</Text>
+      ) : (
+        <View style={styles.mobileLayout}>
+          {meetingsContent}
+          <View style={{ height: spacing.lg }} />
+          {openTasksContent}
+          <View style={{ height: spacing.lg }} />
+          {completedTasksContent}
+          <View style={{ height: spacing["4xl"] }} />
         </View>
-        <AppCard style={styles.tasksCard} padded={false}>
-          {openTasks.length === 0 ? (
-            <View style={styles.taskHintContainer}>
-              <Text style={[styles.taskHint, { color: colors.mutedForeground }]}>
-                {t("noOpenTasks")}
-              </Text>
-            </View>
-          ) : (
-            openTasks.slice(0, 5).map((task) => {
-              const taskMeeting = meetings.find((m) => m.id === task.meetingId);
-              return (
-                <TaskCard 
-                  key={task.id} 
-                  task={task} 
-                  meeting={taskMeeting} 
-                  currentUserId={currentUser?.uid}
-                />
-              );
-            })
-          )}
-        </AppCard>
-      </View>
-
-      <View style={[styles.section, { marginBottom: spacing["4xl"] }]}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="checkmark-circle-outline" size={20} color="#10b981" />
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("completedTasksTitle")}</Text>
-        </View>
-        <AppCard style={styles.tasksCard} padded={false}>
-          {doneTasks.length === 0 ? (
-            <View style={styles.taskHintContainer}>
-              <Text style={[styles.taskHint, { color: colors.mutedForeground }]}>
-                {t("noCompletedTasks")}
-              </Text>
-            </View>
-          ) : (
-            doneTasks.slice(0, 5).map((task) => {
-              const taskMeeting = meetings.find((m) => m.id === task.meetingId);
-              return (
-                <TaskCard 
-                  key={task.id} 
-                  task={task} 
-                  meeting={taskMeeting} 
-                  currentUserId={currentUser?.uid}
-                />
-              );
-            })
-          )}
-        </AppCard>
-      </View>
+      )}
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
+  navbar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: spacing.md,
-    marginBottom: spacing["2xl"],
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
   },
-  welcome: { ...typography.h1 },
-  subtitle: { ...typography.bodySmall },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  logoText: {
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  headerActions: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: spacing.sm,
+  },
   actionBtn: { 
-    padding: spacing.sm,
-    backgroundColor: "transparent",
-    borderRadius: borderRadius.md,
-    minWidth: 36,
+    height: 36,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.lg,
     alignItems: "center",
     justifyContent: "center",
+    minWidth: 36,
   },
-  section: { marginBottom: spacing["3xl"] },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
-  sectionTitle: { ...typography.h3 },
-  meetingsCard: { overflow: "hidden" },
-  tasksCard: { overflow: "hidden" },
-  emptyAction: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.xs },
-  taskHintContainer: { padding: spacing.xl, alignItems: "center", justifyContent: "center" },
-  taskHint: { ...typography.bodySmall, fontStyle: "italic", textAlign: "center" },
+  welcomeContainer: {
+    marginBottom: spacing.lg,
+  },
+  welcome: { 
+    ...typography.h1,
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  subtitle: { 
+    ...typography.body,
+    fontSize: 14,
+  },
+  tabletLayout: {
+    flexDirection: "row",
+    gap: spacing.lg,
+  },
+  leftColumn: {
+    flex: 2,
+  },
+  rightColumn: {
+    flex: 1.2,
+    gap: spacing.lg,
+  },
+  mobileLayout: {
+    flexDirection: "column",
+  },
+  meetingsCard: { 
+    overflow: "hidden",
+  },
+  tasksCard: { 
+    overflow: "hidden",
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  emptyAction: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    paddingVertical: spacing.xs,
+  },
+  taskHintContainer: { 
+    paddingVertical: spacing.xl, 
+    alignItems: "center", 
+    justifyContent: "center",
+  },
+  taskHint: { 
+    ...typography.bodySmall, 
+    fontStyle: "italic", 
+    textAlign: "center",
+  },
 });

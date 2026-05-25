@@ -13,7 +13,11 @@
       "backgroundColor": "#09090b"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera for video meetings.",
+        "NSMicrophoneUsageDescription": "This app uses the microphone for audio meetings."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,13 +25,22 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.mobile",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "BLUETOOTH",
+        "BLUETOOTH_CONNECT"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
     ]
   }
 }

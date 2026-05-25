@@ -5,9 +5,14 @@
 import { apiClient } from "./api-client";
 import { ENV } from "../config/env";
 
-export async function getLiveKitToken(meetingId: string) {
-  const data = await apiClient.get<{ token: string }>(
-    `/api/livekit/token?room=${meetingId}`
+export async function getLiveKitToken(meetingId: string, identity: string, name: string) {
+  const data = await apiClient.post<{ token: string }>(
+    `/api/livekit/token`,
+    {
+      roomName: meetingId,
+      identity,
+      name,
+    }
   );
   return data.token;
 }
