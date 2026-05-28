@@ -1,23 +1,23 @@
-/**
- * AI Service — Manages AI Q&A based on transcripts.
- */
-
 import { apiClient } from "./api-client";
 
-export interface AIMessage {
+export interface AiMessage {
   id: string;
-  meeting_id: string;
-  role: "user" | "assistant";
-  content: string;
+  meetingId: string;
+  question: string;
+  answer: string;
+  createdByUserId?: string;
+  createdAt?: string;
 }
 
-export async function askAI(meetingId: string, question: string) {
-  return apiClient.post<{ response: string }>(`/api/ai/ask`, {
-    meeting_id: meetingId,
-    question,
-  });
+export async function askAI(meetingId: string, question: string, userName: string): Promise<AiMessage> {
+  return apiClient.post<AiMessage>("/api/ai/ask", { meetingId, question, userName });
 }
 
-export async function getAIMessages(meetingId: string) {
-  return apiClient.get<AIMessage[]>(`/api/ai/messages/${meetingId}`);
+export async function getAIMessages(meetingId: string): Promise<AiMessage[]> {
+  try {
+    return await apiClient.get<AiMessage[]>(`/api/ai/messages/${meetingId}`);
+  } catch (err: any) {
+    if (err.status === 404) return [];
+    throw err;
+  }
 }

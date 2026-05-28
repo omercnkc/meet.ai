@@ -89,15 +89,15 @@ export function TaskCard({ task, meeting, onToggle, currentUserId }: TaskCardPro
           </View>
         )}
 
-        {(task.assignedToUserId || meeting) && (
+        {(task.assignedToUserId || task.assignedToName || meeting) && (
           <Text style={[styles.meta, { color: colors.mutedForeground }]}>
             {t("assignedToPrefix", { defaultValue: "Assigned to:" })}{" "}
             <Text style={{ color: colors.foreground + "CC", fontWeight: "500" }}>
-              {!task.assignedToUserId 
-                ? (t("unassigned", { defaultValue: "Unassigned" }))
+              {!task.assignedToUserId
+                ? t("unassigned", { defaultValue: "Unassigned" })
                 : task.assignedToUserId === currentUserId
-                  ? (t("you", { defaultValue: "You" }))
-                  : task.assignedToUserId}
+                  ? t("you", { defaultValue: "You" })
+                  : (task.assignedToName || task.assignedToUserId)}
             </Text>
           </Text>
         )}

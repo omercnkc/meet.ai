@@ -21,7 +21,8 @@ export interface Task {
   title: string;
   status: "open" | "done";
   createdAt: Timestamp;
-  assignedToUserId?: string;
+  assignedToUserId?: string | null;
+  assignedToName?: string | null;
 }
 
 export function subscribeToTasks(
@@ -77,13 +78,19 @@ export function subscribeToTasks(
   }
 }
 
-export async function createTask(meetingId: string, title: string, assignedToUserId?: string) {
+export async function createTask(
+  meetingId: string,
+  title: string,
+  assignedToUserId?: string | null,
+  assignedToName?: string | null
+) {
   await addDoc(collection(db, "tasks"), {
     meetingId,
     title,
     status: "open",
     createdAt: Timestamp.now(),
-    assignedToUserId,
+    assignedToUserId: assignedToUserId ?? null,
+    assignedToName: assignedToName ?? null,
   });
 }
 

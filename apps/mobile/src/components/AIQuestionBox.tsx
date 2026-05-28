@@ -1,8 +1,3 @@
-/**
- * AIQuestionBox — Interactive Q&A interface for meetings.
- * Only answers based on the transcript as per requirements.
- */
-
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -16,88 +11,97 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing, typography, borderRadius } from "../theme";
-import { askAI, getAIMessages, AIMessage } from "../services/ai";
+import { useAuth } from "../hooks/useAuth";
+import { askAI, getAIMessages, AiMessage } from "../services/ai";
 
 interface AIQuestionBoxProps {
   meetingId: string;
 }
 
+type ChatMsg = { id: string; role: "user" | "assistant"; content: string };
+
+function toChat(msgs: AiMessage[]): ChatMsg[] {
+  return msgs.flatMap((m) => [
+    { id: `${m.id}-q`, role: "user" as const, content: m.question },
+    { id: `${m.id}-a`, role: "assistant" as const, content: m.answer },
+  ]);
+}
+
+const SUGGESTIONS = [
+  "What were the main topics discussed?",
+  "What action items were identified?",
+  "Summarize the key decisions made.",
+];
+
 export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
   const { colors } = useTheme();
   const { height } = useWindowDimensions();
-  const [messages, setMessages] = useState<AIMessage[]>([]);
+  const { currentUser } = useAuth();
+
+  const [chat, setChat] = useState<ChatMsg[]>([]);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const flatListRef = useRef<FlatList>(null);
 
+  const userName =
+    currentUser?.displayName || currentUser?.email?.split("@")[0] || "User";
+
   useEffect(() => {
-    loadMessages();
+    (async () => {
+      try {
+        const data = await getAIMessages(meetingId);
+        setChat(toChat(data));
+      } catch (err) {
+        console.error("[AIQuestionBox] loadMessages failed", err);
+      } finally {
+        setFetching(false);
+      }
+    })();
   }, [meetingId]);
 
-  const loadMessages = async () => {
-    try {
-      const data = await getAIMessages(meetingId);
-      setMessages(data);
-    } catch (err) {
-      console.error("Failed to load AI messages", err);
-    } finally {
-      setFetching(false);
-    }
-  };
-
   const handleAsk = async () => {
-    if (!question.trim() || loading) return;
+    const q = question.trim();
+    if (!q || loading) return;
 
-    const userMsg: AIMessage = {
-      id: Date.now().toString(),
-      meeting_id: meetingId,
-      role: "user",
-      content: question.trim(),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
+    const userMsg: ChatMsg = { id: String(Date.now()), role: "user", content: q };
+    setChat((prev) => [...prev, userMsg]);
     setQuestion("");
     setLoading(true);
 
     try {
-      const { response } = await askAI(meetingId, userMsg.content);
-      const aiMsg: AIMessage = {
-        id: (Date.now() + 1).toString(),
-        meeting_id: meetingId,
+      const result = await askAI(meetingId, q, userName);
+      const aiMsg: ChatMsg = {
+        id: String(Date.now() + 1),
         role: "assistant",
-        content: response,
+        content: result.answer,
       };
-      setMessages((prev) => [...prev, aiMsg]);
+      setChat((prev) => [...prev, aiMsg]);
     } catch (err: any) {
-      const errMsg: AIMessage = {
-        id: (Date.now() + 1).toString(),
-        meeting_id: meetingId,
-        role: "assistant",
-        content: err.message || "Sorry, I couldn't process that request.",
-      };
-      setMessages((prev) => [...prev, errMsg]);
+      setChat((prev) => [
+        ...prev,
+        {
+          id: String(Date.now() + 1),
+          role: "assistant",
+          content: err.message || "Sorry, I couldn't process that request.",
+        },
+      ]);
     } finally {
       setLoading(false);
     }
   };
 
-  const renderMessage = ({ item }: { item: AIMessage }) => {
-    const isAssistant = item.role === "assistant";
+  const renderMsg = ({ item }: { item: ChatMsg }) => {
+    const isAI = item.role === "assistant";
     return (
       <View
         style={[
-          styles.messageBubble,
-          isAssistant ? styles.assistantBubble : styles.userBubble,
-          { backgroundColor: isAssistant ? colors.secondary : colors.primary },
+          styles.bubble,
+          isAI ? styles.aiBubble : styles.userBubble,
+          { backgroundColor: isAI ? colors.secondary : colors.primary },
         ]}
       >
-        <Text
-          style={[
-            styles.messageText,
-            { color: isAssistant ? colors.foreground : colors.primaryForeground },
-          ]}
-        >
+        <Text style={[styles.bubbleText, { color: isAI ? colors.foreground : colors.primaryForeground }]}>
           {item.content}
         </Text>
       </View>
@@ -105,41 +109,38 @@ export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
   };
 
   return (
-    <View style={[styles.container, { borderColor: colors.border + "66", height: Math.min(400, height * 0.5) }]}>
-      <View style={styles.header}>
+    <View style={[styles.container, { borderColor: colors.border + "66", height: Math.min(420, height * 0.5) }]}>
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: colors.border + "30" }]}>
         <Ionicons name="sparkles" size={18} color={colors.primary} />
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>AI Assistant</Text>
       </View>
 
+      {/* Messages */}
       <FlatList
         ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item, i) => item.id || String(i)}
-        style={styles.messageList}
+        data={chat}
+        renderItem={renderMsg}
+        keyExtractor={(item) => item.id}
+        style={styles.list}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
         ListEmptyComponent={
           fetching ? (
             <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
           ) : (
-            <View style={styles.emptyContainer}>
+            <View style={styles.empty}>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
                 Ask anything about this meeting's transcript!
               </Text>
-              {/* Suggested question chips */}
-              <View style={styles.chipsRow}>
-                {[
-                  "What were the main topics discussed?",
-                  "What action items were identified?",
-                  "Summarize the key decisions made.",
-                ].map((suggestion) => (
+              <View style={styles.chips}>
+                {SUGGESTIONS.map((s) => (
                   <TouchableOpacity
-                    key={suggestion}
+                    key={s}
                     style={[styles.chip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
-                    onPress={() => setQuestion(suggestion)}
+                    onPress={() => setQuestion(s)}
                   >
-                    <Text style={[styles.chipText, { color: colors.primary }]}>{suggestion}</Text>
+                    <Text style={[styles.chipText, { color: colors.primary }]}>{s}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -148,37 +149,31 @@ export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
         }
       />
 
+      {/* Thinking indicator */}
       {loading && (
-        <View style={styles.loadingRow}>
+        <View style={styles.thinkingRow}>
           <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Thinking...</Text>
+          <Text style={[styles.thinkingText, { color: colors.mutedForeground }]}>Thinking...</Text>
         </View>
       )}
 
+      {/* Input */}
       <View style={[styles.inputRow, { borderTopColor: colors.border + "40" }]}>
         <TextInput
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.background,
-              borderColor: colors.border,
-              color: colors.foreground,
-            },
-          ]}
+          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
           placeholder="Ask a question..."
           placeholderTextColor={colors.mutedForeground}
           value={question}
           onChangeText={setQuestion}
           multiline
           editable={!loading}
+          onSubmitEditing={handleAsk}
+          returnKeyType="send"
         />
         <TouchableOpacity
           onPress={handleAsk}
-          style={[
-            styles.sendBtn,
-            { backgroundColor: colors.primary, opacity: question.trim() ? 1 : 0.6 },
-          ]}
-          disabled={!question.trim()}
+          style={[styles.sendBtn, { backgroundColor: colors.primary, opacity: question.trim() ? 1 : 0.5 }]}
+          disabled={!question.trim() || loading}
         >
           <Ionicons name="send" size={20} color={colors.primaryForeground} />
         </TouchableOpacity>
@@ -200,80 +195,26 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: "#00000010",
   },
-  headerTitle: {
-    ...typography.label,
-    fontWeight: "600",
-  },
-  messageList: {
-    flex: 1,
-    padding: spacing.md,
-  },
-  messageBubble: {
+  headerTitle: { ...typography.label, fontWeight: "600" },
+  list: { flex: 1, padding: spacing.md },
+  bubble: {
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     marginBottom: spacing.sm,
     maxWidth: "90%",
   },
-  assistantBubble: {
-    alignSelf: "flex-start",
-    borderBottomLeftRadius: 4,
-  },
-  userBubble: {
-    alignSelf: "flex-end",
-    borderBottomRightRadius: 4,
-  },
-  messageText: {
-    ...typography.bodySmall,
-    lineHeight: 18,
-  },
-  emptyText: {
-    ...typography.bodySmall,
-    textAlign: "center",
-    marginTop: spacing["5xl"],
-    opacity: 0.6,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingHorizontal: spacing.md,
-  },
-  chipsRow: {
-    flexDirection: "column",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    width: "100%",
-  },
-  chip: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    alignItems: "center",
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: "500",
-    textAlign: "center",
-  },
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.xs,
-  },
-  loadingText: {
-    fontSize: 12,
-    fontStyle: "italic",
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    padding: spacing.sm,
-    borderTopWidth: 1,
-    gap: spacing.sm,
-  },
+  aiBubble:   { alignSelf: "flex-start", borderBottomLeftRadius: 4 },
+  userBubble: { alignSelf: "flex-end", borderBottomRightRadius: 4 },
+  bubbleText: { ...typography.bodySmall, lineHeight: 18 },
+  empty: { alignItems: "center", paddingHorizontal: spacing.md },
+  emptyText: { ...typography.bodySmall, textAlign: "center", marginTop: spacing["5xl"], opacity: 0.6 },
+  chips: { flexDirection: "column", gap: spacing.sm, marginTop: spacing.lg, width: "100%" },
+  chip: { borderWidth: 1, borderRadius: borderRadius.xl, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, alignItems: "center" },
+  chipText: { fontSize: 12, fontWeight: "500", textAlign: "center" },
+  thinkingRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.md, paddingBottom: spacing.sm, gap: spacing.xs },
+  thinkingText: { fontSize: 12, fontStyle: "italic" },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", padding: spacing.sm, borderTopWidth: 1, gap: spacing.sm },
   input: {
     flex: 1,
     minHeight: 40,
@@ -284,11 +225,5 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     fontSize: 14,
   },
-  sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.lg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  sendBtn: { width: 40, height: 40, borderRadius: borderRadius.lg, alignItems: "center", justifyContent: "center" },
 });
