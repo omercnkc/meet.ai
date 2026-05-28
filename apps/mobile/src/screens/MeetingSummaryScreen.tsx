@@ -182,7 +182,7 @@ export default function MeetingSummaryScreen({ route, navigation }: Props) {
     );
   }
 
-  const transcriptContent = transcripts[0]?.content;
+  const transcriptContent = transcripts[0]?.fullText;
   const hasRecording = recordings.length > 0;
 
   return (

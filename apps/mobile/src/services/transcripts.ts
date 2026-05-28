@@ -6,9 +6,15 @@ import { apiClient } from "./api-client";
 
 export interface Transcript {
   id: string;
-  meeting_id: string;
-  recording_id: string;
-  content: string;
+  meetingId: string;
+  recordingId?: string | null;
+  status: string;
+  language?: string | null;
+  fullText?: string | null;
+  segments?: any[] | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt?: string | null;
 }
 
 export async function getTranscriptsByMeeting(meetingId: string) {
