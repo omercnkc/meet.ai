@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(Get-ChildItem -Recurse -Directory)",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(adb devices *)",
+      "PowerShell(pnpm run *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\omerc\\\\OneDrive\\\\Desktop\\\\meet.ai\\\\apps\\\\mobile\" -Recurse -Force | Where-Object { $_.FullName -notmatch 'node_modules' -and $_.FullName -notmatch '\\\\.git' -and $_.FullName -notmatch '\\\\.expo' } | ForEach-Object { $_.FullName.Replace\\('C:\\\\Users\\\\omerc\\\\OneDrive\\\\Desktop\\\\meet.ai\\\\apps\\\\mobile', '.'\\) } | Sort-Object)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\omerc\\\\OneDrive\\\\Desktop\\\\meet.ai\\\\apps\\\\mobile\" -File | ForEach-Object { $_.Name } | Sort-Object)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\omerc\\\\OneDrive\\\\Desktop\\\\meet.ai\\\\apps\\\\mobile\" -Directory | Where-Object { $_.Name -notmatch 'node_modules|\\\\.expo|android|ios|\\\\.git' } | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\omerc\\\\OneDrive\\\\Desktop\\\\meet.ai\\\\apps\\\\mobile\" -Name | Where-Object { $_ -match \"metro|babel|webpack\" })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\omerc\\\\OneDrive\\\\Desktop\\\\meet.ai\\\\apps\\\\mobile\" -File | ForEach-Object { $_.Name })",
+      "PowerShell(Start-Process powershell -ArgumentList '-NoExit', '-Command', 'cd \"C:\\\\Users\\\\omerc\\\\OneDrive\\\\Desktop\\\\meet.ai\"; pnpm run mobile:clean')"
     ]
   }
 }

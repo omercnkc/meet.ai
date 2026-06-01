@@ -7,12 +7,13 @@ GET  /api/recordings/{meetingId} — Get recording metadata for a meeting
 
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from firebase_admin import firestore
 from app.integrations.firebase_admin import verify_firebase_token
 from app.services.supabase_service import upload_recording, get_recordings_by_meeting
+from app.services.transcription_service import transcribe_meeting
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ async def upload_recording_endpoint(
     file: UploadFile = File(...),
     durationSeconds: int | None = Form(None),
     mimeType: str | None = Form(None),
+    background_tasks: BackgroundTasks = None,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ):
     """
@@ -89,6 +91,12 @@ async def upload_recording_endpoint(
             mime_type=resolved_mime,
             duration_seconds=durationSeconds,
         )
+
+        # Trigger background transcription automatically
+        if background_tasks:
+            logger.info("[Recordings] Enqueueing background transcription for meeting=%s", meetingId)
+            background_tasks.add_task(transcribe_meeting, meetingId)
+
     except Exception as exc:
         logger.exception("[Recordings] Upload failed for meeting=%s", meetingId)
         raise HTTPException(

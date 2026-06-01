@@ -78,7 +78,7 @@ function fmtTime(s: number) {
 
 type Props = NativeStackScreenProps<RootStackParamList, "ActiveMeeting">;
 type TabKey = "meeting" | "tasks" | "chat";
-type Participant = { identity: string; name: string };
+type Participant = { identity: string; name: string; email: string | null };
 
 export default function ActiveMeetingScreen({ route, navigation }: Props) {
   const { meetingId } = route.params;
@@ -105,8 +105,9 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
   // Task creation
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [addingTask, setAddingTask] = useState(false);
-  const [taskAssignee, setTaskAssignee] = useState<{ id: string; name: string } | null>(null);
+  const [selectedAssignees, setSelectedAssignees] = useState<Participant[]>([]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [mentionSearchQuery, setMentionSearchQuery] = useState("");
 
   const [chatText, setChatText] = useState("");
   const chatListRef = useRef<FlatList>(null);
@@ -195,11 +196,29 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
       setIsCameraEnabled(r.localParticipant.isCameraEnabled);
       setIsScreenSharing(r.localParticipant.isScreenShareEnabled);
 
+      const getEmailFromMetadata = (metadataStr?: string): string | null => {
+        if (!metadataStr) return null;
+        try {
+          const data = JSON.parse(metadataStr);
+          return data.email || null;
+        } catch {
+          return null;
+        }
+      };
+
       // Track participants for @mention
       const parts: Participant[] = [];
-      parts.push({ identity: r.localParticipant.identity, name: r.localParticipant.name || r.localParticipant.identity });
+      parts.push({ 
+        identity: r.localParticipant.identity, 
+        name: r.localParticipant.name || r.localParticipant.identity,
+        email: currentUser?.email || null
+      });
       for (const p of r.remoteParticipants.values()) {
-        parts.push({ identity: p.identity, name: p.name || p.identity });
+        parts.push({ 
+          identity: p.identity, 
+          name: p.name || p.identity,
+          email: getEmailFromMetadata(p.metadata)
+        });
       }
       setMeetingParticipants(parts);
     };
@@ -212,7 +231,8 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
         const ok = await requestAndroidPermissions();
         if (!ok && Platform.OS === "android") { if (alive) setIsConnecting(false); return; }
 
-        const token = await getLiveKitToken(meetingId, identity, name);
+        const email = currentUser?.email || null;
+        const token = await getLiveKitToken(meetingId, identity, name, email);
         if (!alive) return;
 
         await AudioSession.startAudioSession();
@@ -295,16 +315,24 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     if (!newTaskTitle.trim()) return;
     setAddingTask(true);
     try {
+      const assigneesToSend = selectedAssignees.map(a => ({
+        userId: a.identity,
+        name: a.name,
+        email: a.email
+      }));
       await createTask(
         meetingId,
         newTaskTitle.trim(),
-        taskAssignee?.id ?? currentUserId,
-        taskAssignee?.name ?? null
+        assigneesToSend
       );
       setNewTaskTitle("");
-      setTaskAssignee(null);
-    } catch (err) {
+      setSelectedAssignees([]);
+    } catch (err: any) {
       console.error("addTask failed", err);
+      Alert.alert(
+        "Error", 
+        err.message || "Failed to create task. Please verify that assignees are present in the meeting."
+      );
     } finally {
       setAddingTask(false);
     }
@@ -312,18 +340,29 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
 
   const handleTaskTitleChange = (text: string) => {
     setNewTaskTitle(text);
-    if (text.endsWith("@")) setShowMentionPicker(true);
-    else if (showMentionPicker) setShowMentionPicker(false);
+    const match = text.match(/@(\w*)$/);
+    if (match) {
+      setShowMentionPicker(true);
+      setMentionSearchQuery(match[1]);
+    } else {
+      setShowMentionPicker(false);
+      setMentionSearchQuery("");
+    }
   };
 
-  const handleSelectAssignee = (p: Participant | "everyone") => {
-    if (p === "everyone") {
-      setTaskAssignee({ id: "everyone", name: "Everyone" });
-    } else {
-      setTaskAssignee({ id: p.identity, name: p.name });
+  const handleSelectAssignee = (p: Participant) => {
+    if (selectedAssignees.some((a) => a.identity === p.identity)) {
+      Alert.alert("Already Assigned", `${p.name} is already assigned to this task.`);
+      return;
     }
-    setNewTaskTitle((prev) => prev.replace(/@$/, ""));
+    setSelectedAssignees((prev) => [...prev, p]);
+    setNewTaskTitle((prev) => prev.replace(/@\w*$/, `@${p.name} `));
     setShowMentionPicker(false);
+    setMentionSearchQuery("");
+  };
+
+  const handleRemoveAssignee = (identity: string) => {
+    setSelectedAssignees((prev) => prev.filter((a) => a.identity !== identity));
   };
 
   const handleSendChat = async () => {
@@ -567,40 +606,45 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
                 <AppButton title="Add" size="sm" onPress={handleAddTask} loading={addingTask} disabled={!newTaskTitle.trim()} />
               </View>
 
-              {/* Assignee chip */}
-              {taskAssignee && (
-                <View style={styles.assigneeRow}>
-                  <Ionicons name="person" size={12} color={colors.primary} />
-                  <Text style={[styles.assigneeText, { color: colors.primary }]}>{taskAssignee.name}</Text>
-                  <TouchableOpacity onPress={() => setTaskAssignee(null)}>
-                    <Ionicons name="close-circle" size={14} color={colors.mutedForeground} />
-                  </TouchableOpacity>
+              {/* Selected Assignees Chips */}
+              {selectedAssignees.length > 0 && (
+                <View style={styles.chipsContainer}>
+                  {selectedAssignees.map((assignee) => (
+                    <View key={assignee.identity} style={[styles.chip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}>
+                      <Ionicons name="person" size={12} color={colors.primary} />
+                      <Text style={[styles.chipText, { color: colors.primary }]}>{assignee.name}</Text>
+                      <TouchableOpacity onPress={() => handleRemoveAssignee(assignee.identity)} style={styles.chipRemove}>
+                        <Ionicons name="close-circle" size={14} color={colors.primary} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
                 </View>
               )}
 
               {/* @mention picker */}
               {showMentionPicker && (
                 <View style={[styles.mentionBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <TouchableOpacity
-                    style={[styles.mentionItem, { borderBottomColor: colors.border + "40" }]}
-                    onPress={() => handleSelectAssignee("everyone")}
-                  >
-                    <Ionicons name="people" size={16} color={colors.primary} />
-                    <Text style={[styles.mentionName, { color: colors.foreground }]}>Everyone</Text>
-                  </TouchableOpacity>
-                  {meetingParticipants.map((p) => (
-                    <TouchableOpacity
-                      key={p.identity}
-                      style={[styles.mentionItem, { borderBottomColor: colors.border + "40" }]}
-                      onPress={() => handleSelectAssignee(p)}
-                    >
-                      <Ionicons name="person-outline" size={16} color={colors.mutedForeground} />
-                      <Text style={[styles.mentionName, { color: colors.foreground }]}>{p.name}</Text>
-                      {p.identity === currentUserId && (
-                        <Text style={[styles.mentionYou, { color: colors.mutedForeground }]}>(you)</Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
+                  {meetingParticipants.filter(p => p.name.toLowerCase().includes(mentionSearchQuery.toLowerCase())).length === 0 ? (
+                    <View style={styles.mentionEmpty}>
+                      <Text style={{ color: colors.mutedForeground, fontSize: 12, fontStyle: "italic" }}>No participants found</Text>
+                    </View>
+                  ) : (
+                    meetingParticipants
+                      .filter(p => p.name.toLowerCase().includes(mentionSearchQuery.toLowerCase()))
+                      .map((p) => (
+                        <TouchableOpacity
+                          key={p.identity}
+                          style={[styles.mentionItem, { borderBottomColor: colors.border + "40" }]}
+                          onPress={() => handleSelectAssignee(p)}
+                        >
+                          <Ionicons name="person-outline" size={16} color={colors.mutedForeground} />
+                          <Text style={[styles.mentionName, { color: colors.foreground }]}>{p.name}</Text>
+                          {p.identity === currentUserId && (
+                            <Text style={[styles.mentionYou, { color: colors.mutedForeground }]}>(you)</Text>
+                          )}
+                        </TouchableOpacity>
+                      ))
+                  )}
                 </View>
               )}
             </View>
@@ -740,6 +784,31 @@ const styles = StyleSheet.create({
   mentionItem: { flexDirection: "row", alignItems: "center", padding: spacing.md, borderBottomWidth: 1, gap: spacing.sm },
   mentionName: { ...typography.bodySmall, flex: 1 },
   mentionYou:  { ...typography.caption },
+  mentionEmpty: { padding: spacing.md, alignItems: "center", justifyContent: "center" },
+
+  chipsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    paddingHorizontal: 4,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderRadius: borderRadius.xl,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  chipRemove: {
+    marginLeft: 2,
+  },
 
   input:       { flex: 1, height: 40, borderRadius: borderRadius.lg, paddingHorizontal: spacing.md, fontSize: 14 },
   listContent: { padding: spacing.lg, paddingBottom: 100 },

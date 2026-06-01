@@ -5,7 +5,7 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  FlatList,
+  ScrollView,
   ActivityIndicator,
   useWindowDimensions,
 } from "react-native";
@@ -16,6 +16,7 @@ import { askAI, getAIMessages, AiMessage } from "../services/ai";
 
 interface AIQuestionBoxProps {
   meetingId: string;
+  hasTranscript?: boolean;
 }
 
 type ChatMsg = { id: string; role: "user" | "assistant"; content: string };
@@ -33,7 +34,7 @@ const SUGGESTIONS = [
   "Summarize the key decisions made.",
 ];
 
-export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
+export function AIQuestionBox({ meetingId, hasTranscript = true }: AIQuestionBoxProps) {
   const { colors } = useTheme();
   const { height } = useWindowDimensions();
   const { currentUser } = useAuth();
@@ -42,7 +43,7 @@ export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
-  const flatListRef = useRef<FlatList>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const userName =
     currentUser?.displayName || currentUser?.email?.split("@")[0] || "User";
@@ -95,6 +96,7 @@ export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
     const isAI = item.role === "assistant";
     return (
       <View
+        key={item.id}
         style={[
           styles.bubble,
           isAI ? styles.aiBubble : styles.userBubble,
@@ -117,37 +119,48 @@ export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
       </View>
 
       {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={chat}
-        renderItem={renderMsg}
-        keyExtractor={(item) => item.id}
-        style={styles.list}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={
-          fetching ? (
-            <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
-          ) : (
-            <View style={styles.empty}>
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                Ask anything about this meeting's transcript!
-              </Text>
-              <View style={styles.chips}>
-                {SUGGESTIONS.map((s) => (
-                  <TouchableOpacity
-                    key={s}
-                    style={[styles.chip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
-                    onPress={() => setQuestion(s)}
-                  >
-                    <Text style={[styles.chipText, { color: colors.primary }]}>{s}</Text>
-                  </TouchableOpacity>
-                ))}
+      {!hasTranscript ? (
+        <View style={styles.disabledContainer}>
+          <Ionicons name="chatbubble-ellipses-outline" size={48} color={colors.mutedForeground} style={{ opacity: 0.5, marginBottom: spacing.md }} />
+          <Text style={[styles.disabledTitle, { color: colors.foreground }]}>Transcript Required</Text>
+          <Text style={[styles.disabledSubtitle, { color: colors.mutedForeground }]}>
+            You need to generate a transcript of the meeting before you can chat with the AI.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.list}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+          nestedScrollEnabled={true}
+        >
+          {chat.length === 0 ? (
+            fetching ? (
+              <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
+            ) : (
+              <View style={styles.empty}>
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                  Ask anything about this meeting's transcript!
+                </Text>
+                <View style={styles.chips}>
+                  {SUGGESTIONS.map((s) => (
+                    <TouchableOpacity
+                      key={s}
+                      style={[styles.chip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
+                      onPress={() => setQuestion(s)}
+                    >
+                      <Text style={[styles.chipText, { color: colors.primary }]}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
-          )
-        }
-      />
+            )
+          ) : (
+            chat.map((item) => renderMsg({ item }))
+          )}
+        </ScrollView>
+      )}
 
       {/* Thinking indicator */}
       {loading && (
@@ -160,20 +173,20 @@ export function AIQuestionBox({ meetingId }: AIQuestionBoxProps) {
       {/* Input */}
       <View style={[styles.inputRow, { borderTopColor: colors.border + "40" }]}>
         <TextInput
-          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
-          placeholder="Ask a question..."
+          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground, opacity: hasTranscript ? 1 : 0.5 }]}
+          placeholder={hasTranscript ? "Ask a question..." : "Generate transcript first..."}
           placeholderTextColor={colors.mutedForeground}
           value={question}
           onChangeText={setQuestion}
           multiline
-          editable={!loading}
+          editable={hasTranscript && !loading}
           onSubmitEditing={handleAsk}
           returnKeyType="send"
         />
         <TouchableOpacity
           onPress={handleAsk}
-          style={[styles.sendBtn, { backgroundColor: colors.primary, opacity: question.trim() ? 1 : 0.5 }]}
-          disabled={!question.trim() || loading}
+          style={[styles.sendBtn, { backgroundColor: colors.primary, opacity: (hasTranscript && question.trim()) ? 1 : 0.4 }]}
+          disabled={!hasTranscript || !question.trim() || loading}
         >
           <Ionicons name="send" size={20} color={colors.primaryForeground} />
         </TouchableOpacity>
@@ -226,4 +239,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   sendBtn: { width: 40, height: 40, borderRadius: borderRadius.lg, alignItems: "center", justifyContent: "center" },
+  disabledContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  disabledTitle: {
+    ...typography.body,
+    fontWeight: "bold",
+    marginBottom: spacing.xs,
+    textAlign: "center",
+  },
+  disabledSubtitle: {
+    ...typography.caption,
+    textAlign: "center",
+    lineHeight: 18,
+    paddingHorizontal: spacing.md,
+  },
 });

@@ -1,5 +1,6 @@
 """
 Meet.AI — FastAPI Application Factory.
+Updated to trigger reload with background transcription.
 """
 
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from app.api.v1.livekit import router as livekit_router
 from app.api.v1.recordings import router as recordings_router
 from app.api.v1.transcripts import router as transcripts_router
 from app.api.v1.ai_messages import router as ai_messages_router
+from app.api.v1.tasks import router as tasks_router
 
 
 def create_app() -> FastAPI:
@@ -33,6 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(recordings_router)
     app.include_router(transcripts_router)
     app.include_router(ai_messages_router)
+    app.include_router(tasks_router)
 
     # ── Health check ──
     @app.get("/health", tags=["System"])

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, ActivityIndicator, FlatList } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing, typography, borderRadius } from "../theme";
 import { useAuth } from "../hooks/useAuth";
@@ -37,6 +37,7 @@ export default function MeetingSummaryScreen({ route, navigation }: Props) {
   const [generating, setGenerating] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [addingTask, setAddingTask] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
 
   const { tasks, loading: tasksLoading } = useTasks(meetingId);
   const [errorState, setErrorState] = useState<string | null>(null);
@@ -186,157 +187,203 @@ export default function MeetingSummaryScreen({ route, navigation }: Props) {
   const hasRecording = recordings.length > 0;
 
   return (
-    <ScreenContainer scrollable>
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Meeting Info</Text>
-        </View>
-        <AppCard>
-          <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Title</Text>
-          <Text style={[styles.infoValue, { color: colors.foreground }]}>{meeting?.title}</Text>
-          
-          <View style={styles.infoRow}>
-            <View style={styles.infoCol}>
-              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Status</Text>
-              <Text style={[styles.infoValue, { color: meeting?.status === "ended" ? colors.mutedForeground : colors.success }]}>
-                {meeting?.status}
-              </Text>
-            </View>
-            <View style={styles.infoCol}>
-              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Date</Text>
-              <Text style={[styles.infoValue, { color: colors.foreground }]}>
-                {meeting?.createdAt?.toDate().toLocaleDateString()}
-              </Text>
-            </View>
-          </View>
-
-          {meeting?.endedAt && (
-            <View>
-              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Ended At</Text>
-              <Text style={[styles.infoValue, { color: colors.foreground }]}>
-                {meeting.endedAt.toDate().toLocaleString()}
-              </Text>
-            </View>
-          )}
-
-          {meeting?.status === "active" && (
-            <AppButton
-              title="Join Live Meeting"
-              variant="primary"
-              size="sm"
-              icon={<Ionicons name="videocam" size={16} color="#fff" />}
-              onPress={() => navigation.replace("ActiveMeeting", { meetingId })}
-              style={{ marginTop: spacing.sm, backgroundColor: colors.success }}
-            />
-          )}
-        </AppCard>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="mic-outline" size={20} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Recordings</Text>
-        </View>
-        
-        {isRecordingPending ? (
-          <AppCard style={{ backgroundColor: colors.primary + "10", borderStyle: "dashed" }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-              <LoadingState size="small" fullScreen={false} message="" />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.recTitle, { color: colors.primary }]}>Recording is still being processed</Text>
-                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-                  We're preparing your meeting audio. This usually takes a few seconds.
-                </Text>
+    <ScreenContainer scrollable={false}>
+      <FlatList
+        data={tasks}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TaskCard
+            task={item}
+            onToggle={(t: Task) => updateTaskStatus(t.id, t.status === "done" ? "open" : "done")}
+            currentUserId={currentUser?.uid}
+          />
+        )}
+        ListHeaderComponent={
+          <>
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Meeting Info</Text>
               </View>
+              <AppCard>
+                <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Title</Text>
+                <Text style={[styles.infoValue, { color: colors.foreground }]}>{meeting?.title}</Text>
+                
+                <View style={styles.infoRow}>
+                  <View style={styles.infoCol}>
+                    <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Status</Text>
+                    <Text style={[styles.infoValue, { color: meeting?.status === "ended" ? colors.mutedForeground : colors.success }]}>
+                      {meeting?.status}
+                    </Text>
+                  </View>
+                  <View style={styles.infoCol}>
+                    <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Date</Text>
+                    <Text style={[styles.infoValue, { color: colors.foreground }]}>
+                      {meeting?.createdAt?.toDate().toLocaleDateString()}
+                    </Text>
+                  </View>
+                </View>
+
+                {meeting?.endedAt && (
+                  <View>
+                    <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>Ended At</Text>
+                    <Text style={[styles.infoValue, { color: colors.foreground }]}>
+                      {meeting.endedAt.toDate().toLocaleString()}
+                    </Text>
+                  </View>
+                )}
+
+                {meeting?.status === "active" && (
+                  <AppButton
+                    title="Join Live Meeting"
+                    variant="primary"
+                    size="sm"
+                    icon={<Ionicons name="videocam" size={16} color="#fff" />}
+                    onPress={() => navigation.replace("ActiveMeeting", { meetingId })}
+                    style={{ marginTop: spacing.sm, backgroundColor: colors.success }}
+                  />
+                )}
+              </AppCard>
             </View>
-            <AppButton 
-              title="Refresh Now" 
-              onPress={() => { setRetryCount(0); loadData(); }} 
-              variant="outline" 
-              size="sm" 
-              style={{ marginTop: spacing.md }}
-            />
-          </AppCard>
-        ) : !hasRecording ? (
-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No recordings found for this meeting.</Text>
-        ) : (
-          recordings.map((rec) => (
-            <AppCard key={rec.id} style={styles.recordingCard}>
-              <View style={styles.recInfo}>
-                <Ionicons name="checkmark-circle" size={16} color={colors.success} />
-                <Text style={[styles.recTitle, { color: colors.foreground }]}>Recording ready</Text>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="mic-outline" size={20} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Recordings</Text>
               </View>
-              {transcripts.length === 0 && (
-                <AppButton
-                  title="Generate Transcript"
-                  onPress={() => handleGenerateTranscript(meetingId)}
-                  loading={generating}
-                  variant="outline"
-                  size="sm"
-                  icon={<Ionicons name="sparkles" size={16} color={colors.foreground} />}
-                />
+              
+              {isRecordingPending ? (
+                <AppCard style={{ backgroundColor: colors.primary + "10", borderStyle: "dashed" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+                    <LoadingState size="small" fullScreen={false} message="" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.recTitle, { color: colors.primary }]}>Recording is still being processed</Text>
+                      <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                        We're preparing your meeting audio. This usually takes a few seconds.
+                      </Text>
+                    </View>
+                  </View>
+                  <AppButton 
+                    title="Refresh Now" 
+                    onPress={() => { setRetryCount(0); loadData(); }} 
+                    variant="outline" 
+                    size="sm" 
+                    style={{ marginTop: spacing.md }}
+                  />
+                </AppCard>
+              ) : !hasRecording ? (
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No recordings found for this meeting.</Text>
+              ) : (
+                recordings.map((rec) => (
+                  <AppCard key={rec.id} style={styles.recordingCard}>
+                    <View style={styles.recInfo}>
+                      <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                      <Text style={[styles.recTitle, { color: colors.foreground }]}>Recording ready</Text>
+                    </View>
+                  </AppCard>
+                ))
               )}
-            </AppCard>
-          ))
-        )}
-      </View>
+            </View>
 
-      {transcriptContent && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Transcript</Text>
-          </View>
-          <TranscriptViewer content={transcriptContent} />
-        </View>
-      )}
+            {hasRecording && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+                  <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Transcript</Text>
+                </View>
+                {transcriptContent ? (
+                  <View style={{ gap: spacing.sm }}>
+                    <AppButton
+                      title={showTranscript ? "Hide Transcript" : "Show Transcript"}
+                      onPress={() => setShowTranscript(prev => !prev)}
+                      variant="outline"
+                      size="sm"
+                      icon={<Ionicons name={showTranscript ? "chevron-up" : "chevron-down"} size={16} color={colors.foreground} />}
+                    />
+                    {showTranscript && <TranscriptViewer content={transcriptContent} />}
+                  </View>
+                ) : (
+                  <AppCard>
+                    {transcripts[0]?.status === "processing" ? (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm }}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={[styles.metaText, { color: colors.foreground }]}>Transcribing meeting audio...</Text>
+                      </View>
+                    ) : transcripts[0]?.status === "failed" ? (
+                      <View style={{ gap: spacing.md }}>
+                        <Text style={[styles.metaText, { color: colors.destructive }]}>
+                          Transcript generation failed: {transcripts[0]?.errorMessage || "Unknown error"}
+                        </Text>
+                        <AppButton
+                          title="Retry Transcript"
+                          onPress={() => handleGenerateTranscript(meetingId)}
+                          loading={generating}
+                          variant="primary"
+                          size="sm"
+                          icon={<Ionicons name="sparkles" size={16} color="#fff" />}
+                        />
+                      </View>
+                    ) : (
+                      <View style={{ gap: spacing.md }}>
+                        <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                          No transcript generated yet. Generate a transcript to enable AI Q&A.
+                        </Text>
+                        <AppButton
+                          title="Generate Transcript"
+                          onPress={() => handleGenerateTranscript(meetingId)}
+                          loading={generating}
+                          variant="primary"
+                          size="sm"
+                          icon={<Ionicons name="sparkles" size={16} color="#fff" />}
+                        />
+                      </View>
+                    )}
+                  </AppCard>
+                )}
+              </View>
+            )}
 
-      {transcriptContent && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="sparkles" size={20} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>AI Q&A</Text>
-          </View>
-          <AIQuestionBox meetingId={meetingId} />
-        </View>
-      )}
+            {hasRecording && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Ionicons name="sparkles" size={20} color={colors.primary} />
+                  <Text style={[styles.sectionTitle, { color: colors.foreground }]}>AI Q&A</Text>
+                </View>
+                <AIQuestionBox meetingId={meetingId} hasTranscript={!!transcriptContent} />
+              </View>
+            )}
 
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="checkbox-outline" size={20} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Action Items</Text>
-        </View>
-        {/* Task creation input */}
-        <View style={styles.inputRow}>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.secondary, color: colors.foreground }]}
-            placeholder="Add a task..."
-            placeholderTextColor={colors.mutedForeground}
-            value={newTaskTitle}
-            onChangeText={setNewTaskTitle}
-          />
-          <AppButton
-            title="Add"
-            size="sm"
-            onPress={handleAddTask}
-            loading={addingTask}
-            disabled={!newTaskTitle.trim()}
-          />
-        </View>
-        {tasks.length === 0 ? (
-          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No tasks found.</Text>
-        ) : (
-          tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onToggle={(t: Task) => updateTaskStatus(t.id, t.status === "done" ? "open" : "done")}
-              currentUserId={currentUser?.uid}
-            />
-          ))
-        )}
-      </View>
+            <View style={[styles.section, { marginBottom: spacing.md }]}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="checkbox-outline" size={20} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Action Items</Text>
+              </View>
+              {/* Task creation input */}
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.secondary, color: colors.foreground }]}
+                  placeholder="Add a task..."
+                  placeholderTextColor={colors.mutedForeground}
+                  value={newTaskTitle}
+                  onChangeText={setNewTaskTitle}
+                />
+                <AppButton
+                  title="Add"
+                  size="sm"
+                  onPress={handleAddTask}
+                  loading={addingTask}
+                  disabled={!newTaskTitle.trim()}
+                />
+              </View>
+            </View>
+          </>
+        }
+        ListEmptyComponent={
+          <Text style={[styles.emptyText, { color: colors.mutedForeground, marginTop: 0 }]}>No tasks found.</Text>
+        }
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      />
     </ScreenContainer>
   );
 }

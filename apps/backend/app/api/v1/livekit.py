@@ -57,6 +57,7 @@ async def create_livekit_token(
             room_name=body.roomName,
             identity=body.identity,
             name=body.name,
+            email=body.email,
         )
     except Exception as exc:
         raise HTTPException(

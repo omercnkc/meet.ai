@@ -26,6 +26,10 @@ class TokenRequest(BaseModel):
         max_length=256,
         description="Participant display name.",
     )
+    email: str | None = Field(
+        default=None,
+        description="Participant email.",
+    )
 
 
 class TokenResponse(BaseModel):

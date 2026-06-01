@@ -5,6 +5,7 @@ Uses the livekit-api Python SDK to create signed access tokens
 with appropriate room-join grants.
 """
 
+import json
 import logging
 from datetime import timedelta
 
@@ -19,6 +20,7 @@ def generate_livekit_token(
     room_name: str,
     identity: str,
     name: str,
+    email: str | None = None,
 ) -> str:
     """
     Generate a signed LiveKit access token.
@@ -27,6 +29,7 @@ def generate_livekit_token(
         room_name: The LiveKit room to grant access to.
         identity:  Unique participant identity (Firebase UID).
         name:      Human-readable display name.
+        email:     Optional participant email address.
 
     Returns:
         A signed JWT string the client passes to LiveKitRoom.
@@ -62,13 +65,21 @@ def generate_livekit_token(
     )
 
     # ── Build token using the SDK's fluent builder API ──
-    jwt_token = (
+    token_builder = (
         AccessToken(
             api_key=settings.LIVEKIT_API_KEY,
             api_secret=settings.LIVEKIT_API_SECRET,
         )
         .with_identity(identity)
         .with_name(name)
+    )
+
+    if email:
+        metadata = json.dumps({"email": email})
+        token_builder = token_builder.with_metadata(metadata)
+
+    jwt_token = (
+        token_builder
         .with_grants(grants)
         .with_ttl(timedelta(hours=6))
         .to_jwt()

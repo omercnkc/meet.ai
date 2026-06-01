@@ -4,8 +4,10 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "mobile": "pnpm --filter mobile start",
+    "mobile:clean": "pnpm --filter mobile start:clean",
+    "android": "pnpm --filter mobile android",
+    "ios": "pnpm --filter mobile ios"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

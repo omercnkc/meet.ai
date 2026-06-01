@@ -14,6 +14,13 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
+import { apiClient } from "./api-client";
+
+export interface SelectedAssignee {
+  userId: string;
+  name: string;
+  email?: string | null;
+}
 
 export interface Task {
   id: string;
@@ -23,6 +30,7 @@ export interface Task {
   createdAt: Timestamp;
   assignedToUserId?: string | null;
   assignedToName?: string | null;
+  assignees?: SelectedAssignee[];
 }
 
 export function subscribeToTasks(
@@ -81,16 +89,26 @@ export function subscribeToTasks(
 export async function createTask(
   meetingId: string,
   title: string,
-  assignedToUserId?: string | null,
+  assignedToUserIdOrSelectedAssignees?: string | SelectedAssignee[] | null,
   assignedToName?: string | null
 ) {
-  await addDoc(collection(db, "tasks"), {
+  let selectedAssignees: SelectedAssignee[] = [];
+  if (Array.isArray(assignedToUserIdOrSelectedAssignees)) {
+    selectedAssignees = assignedToUserIdOrSelectedAssignees;
+  } else if (typeof assignedToUserIdOrSelectedAssignees === "string") {
+    selectedAssignees = [
+      {
+        userId: assignedToUserIdOrSelectedAssignees,
+        name: assignedToName || "User",
+        email: null,
+      },
+    ];
+  }
+
+  return apiClient.post<any>("/api/tasks", {
     meetingId,
     title,
-    status: "open",
-    createdAt: Timestamp.now(),
-    assignedToUserId: assignedToUserId ?? null,
-    assignedToName: assignedToName ?? null,
+    selectedAssignees,
   });
 }
 
