@@ -29,6 +29,7 @@ class Settings:
 
     # n8n
     N8N_TASK_WEBHOOK_URL: str | None = None
+    N8N_WEBHOOK_SECRET: str | None = None
 
     # Server
     HOST: str = "0.0.0.0"
@@ -59,6 +60,7 @@ def load_settings() -> Settings:
         GEMINI_API_KEY=os.getenv("GEMINI_API_KEY"),
         GEMINI_TRANSCRIPTION_MODEL=os.getenv("GEMINI_TRANSCRIPTION_MODEL", "gemini-2.5-flash"),
         N8N_TASK_WEBHOOK_URL=os.getenv("N8N_TASK_WEBHOOK_URL"),
+        N8N_WEBHOOK_SECRET=os.getenv("N8N_WEBHOOK_SECRET"),
         HOST=os.getenv("HOST", "0.0.0.0"),
         PORT=int(os.getenv("PORT", "8000")),
         CORS_ORIGINS=cors_origins,

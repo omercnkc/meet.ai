@@ -52,18 +52,60 @@ async def trigger_n8n_webhook(task_id: str, meeting_id: str, title: str, created
     if not webhook_url:
         logger.info("[Tasks] n8n webhook url not configured. Skipping webhook.")
         return
+
+    # ── Verify and filter assignees ──
+    if not assignees:
+        logger.warning("[Tasks] No assignees found for task %s. Skipping n8n webhook.", task_id)
+        return
+
+    valid_assignees = []
+    for a in assignees:
+        if not a.get("email"):
+            logger.warning(
+                "[Tasks] Assignee '%s' (%s) does not have an email address. Skipping this assignee.",
+                a.get("name"),
+                a.get("userId")
+            )
+            continue
+        valid_assignees.append(a)
+
+    if not valid_assignees:
+        logger.warning(
+            "[Tasks] No assignees with valid email addresses found for task %s. Skipping n8n webhook.",
+            task_id
+        )
+        return
+
     logger.info("[Tasks] Triggering n8n webhook for task_id=%s to %s", task_id, webhook_url)
     try:
-        async with httpx.AsyncClient() as client:
-            payload = {
-                "taskId": task_id,
-                "meetingId": meeting_id,
+        headers = {
+            "Content-Type": "application/json"
+        }
+        if settings.N8N_WEBHOOK_SECRET:
+            headers["Authorization"] = f"Bearer {settings.N8N_WEBHOOK_SECRET}"
+
+        payload = {
+            "event": "task_assigned",
+            "meetingId": meeting_id,
+            "task": {
+                "id": task_id,
                 "title": title,
                 "status": "open",
-                "createdAt": created_at_iso,
-                "assignees": assignees
-            }
-            response = await client.post(webhook_url, json=payload, timeout=10.0)
+                "createdAt": created_at_iso
+            },
+            "assignees": [
+                {
+                    "userId": a.get("userId"),
+                    "name": a.get("name"),
+                    "email": a.get("email")
+                }
+                for a in valid_assignees
+            ]
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(webhook_url, json=payload, headers=headers, timeout=10.0)
+            response.raise_for_status()
             logger.info("[Tasks] n8n webhook response: %d", response.status_code)
     except Exception as exc:
         logger.error("[Tasks] Failed to trigger n8n webhook: %s", exc)
