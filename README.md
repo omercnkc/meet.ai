@@ -4,6 +4,8 @@
 
 Meet.AI is a full-stack monorepo application that lets teams host video meetings, automatically transcribe recordings using Google Gemini, ask AI questions about what was discussed, assign tasks to participants, and receive email notifications — all in one place. Available as both a web app and a React Native mobile app.
 
+![Meet.AI Dashboard](docs/images/dashboard.png)
+
 ---
 
 ## Table of Contents
