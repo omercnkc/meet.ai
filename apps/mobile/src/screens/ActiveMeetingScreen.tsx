@@ -18,6 +18,8 @@ import {
   Alert,
   Modal,
   ScrollView,
+  ActivityIndicator,
+  Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -79,6 +81,7 @@ function fmtTime(s: number) {
 type Props = NativeStackScreenProps<RootStackParamList, "ActiveMeeting">;
 type TabKey = "meeting" | "tasks" | "chat";
 type Participant = { identity: string; name: string; email: string | null };
+type AdmissionPhase = "loading" | "guest-requesting" | "guest-waiting" | "guest-rejected" | "guest-timeout" | "connecting";
 
 export default function ActiveMeetingScreen({ route, navigation }: Props) {
   const { meetingId } = route.params;
@@ -127,6 +130,11 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
 
   const currentUserId = currentUser?.uid ?? (currentUser as any)?.userId;
 
+  // Admission flow
+  const [admissionPhase, setAdmissionPhase] = useState<AdmissionPhase>("loading");
+  const [pendingRequests, setPendingRequests] = useState<Array<{ userId: string; userName: string }>>([]);
+  const restrictedRoomRef = useRef<Room | null>(null);
+
   // ── Meeting subscription ──────────────────────────────────────────────
   useEffect(() => {
     let alive = true;
@@ -146,6 +154,90 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     );
     return () => { alive = false; unsub(); };
   }, [meetingId]);
+
+  // ── Host vs Guest detection ───────────────────────────────────────────
+  useEffect(() => {
+    if (!meeting || !currentUser || admissionPhase !== "loading") return;
+    const hostId = meeting?.hostId || meeting?.userId;
+    setAdmissionPhase(hostId === currentUserId ? "connecting" : "guest-requesting");
+  }, [meeting, currentUser, admissionPhase, currentUserId]);
+
+  // ── Guest admission request ───────────────────────────────────────────
+  useEffect(() => {
+    if (admissionPhase !== "guest-requesting" || !currentUser || !meetingId) return;
+
+    let alive = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let restrictedRoomInst: Room | null = null;
+
+    const doAdmission = async () => {
+      const name = currentUser.displayName || currentUser.email?.split("@")[0] || "Guest";
+
+      let res: Response;
+      try {
+        res = await fetch(`${ENV.NODE_API_BASE_URL}/api/admission/request`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ meetingId, userId: currentUserId, userName: name }),
+        });
+      } catch {
+        if (alive) setAdmissionPhase("guest-rejected");
+        return;
+      }
+
+      if (!res.ok) { if (alive) setAdmissionPhase("guest-rejected"); return; }
+
+      const data = await res.json();
+      if (!alive) return;
+
+      restrictedRoomInst = new Room();
+      restrictedRoomRef.current = restrictedRoomInst;
+
+      restrictedRoomInst.on(RoomEvent.DataReceived, (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
+        if (!alive || topic !== "admission") return;
+        try {
+          const msg = JSON.parse(new TextDecoder().decode(payload));
+          if (msg.type === "JOIN_APPROVED" && msg.payload.userId === currentUserId) {
+            clearTimeout(timeoutId);
+            restrictedRoomInst?.disconnect();
+            restrictedRoomRef.current = null;
+            if (alive) setAdmissionPhase("connecting");
+          } else if (msg.type === "JOIN_REJECTED" && msg.payload.userId === currentUserId) {
+            clearTimeout(timeoutId);
+            restrictedRoomInst?.disconnect();
+            restrictedRoomRef.current = null;
+            if (alive) setAdmissionPhase("guest-rejected");
+          }
+        } catch {}
+      });
+
+      try {
+        await restrictedRoomInst.connect(ENV.LIVEKIT_URL, data.waitingToken);
+      } catch {
+        if (alive) setAdmissionPhase("guest-rejected");
+        return;
+      }
+
+      if (!alive) { restrictedRoomInst.disconnect(); return; }
+      if (alive) setAdmissionPhase("guest-waiting");
+
+      timeoutId = setTimeout(() => {
+        if (!alive) return;
+        restrictedRoomInst?.disconnect();
+        restrictedRoomRef.current = null;
+        setAdmissionPhase("guest-timeout");
+      }, 30000);
+    };
+
+    doAdmission().catch(() => { if (alive) setAdmissionPhase("guest-rejected"); });
+
+    return () => {
+      alive = false;
+      clearTimeout(timeoutId!);
+      restrictedRoomInst?.disconnect();
+      restrictedRoomRef.current = null;
+    };
+  }, [admissionPhase, meetingId, currentUser, currentUserId]);
 
   // ── 1-hour meeting time limit ─────────────────────────────────────────
   useEffect(() => {
@@ -176,7 +268,7 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
 
   // ── LiveKit connection ────────────────────────────────────────────────
   useEffect(() => {
-    if (!currentUser || !meetingId) return;
+    if (!currentUser || !meetingId || admissionPhase !== "connecting") return;
     let alive = true;
     let roomInst: Room | null = null;
 
@@ -208,14 +300,14 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
 
       // Track participants for @mention
       const parts: Participant[] = [];
-      parts.push({ 
-        identity: r.localParticipant.identity, 
+      parts.push({
+        identity: r.localParticipant.identity,
         name: r.localParticipant.name || r.localParticipant.identity,
         email: currentUser?.email || null
       });
       for (const p of r.remoteParticipants.values()) {
-        parts.push({ 
-          identity: p.identity, 
+        parts.push({
+          identity: p.identity,
           name: p.name || p.identity,
           email: getEmailFromMetadata(p.metadata)
         });
@@ -254,6 +346,20 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
         await roomInst.connect(ENV.LIVEKIT_URL || "wss://meet-ai-79lby4wd.livekit.cloud", token);
         if (!alive) { roomInst.disconnect(); return; }
 
+        // Host: listen for guest join requests via DataChannel
+        roomInst.on(RoomEvent.DataReceived, (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
+          if (!alive || topic !== "admission") return;
+          try {
+            const msg = JSON.parse(new TextDecoder().decode(payload));
+            if (msg.type === "JOIN_REQUEST") {
+              setPendingRequests(prev => {
+                if (prev.find(r => r.userId === msg.payload.userId)) return prev;
+                return [...prev, { userId: msg.payload.userId, userName: msg.payload.userName }];
+              });
+            }
+          } catch {}
+        });
+
         setRoom(roomInst);
         setIsConnecting(false);
         refreshTracks(roomInst);
@@ -266,9 +372,9 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     return () => {
       alive = false;
       roomInst?.disconnect();
-      AudioSession.stopAudioSession().catch(() => {});
+      AudioSession.stopAudioSession().catch(() => { });
     };
-  }, [meetingId, currentUser]);
+  }, [meetingId, currentUser, admissionPhase]);
 
   // ── Controls ──────────────────────────────────────────────────────────
   const toggleMic = async () => {
@@ -311,6 +417,37 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     navigation.navigate("Dashboard");
   };
 
+  const handleAdmit = async (userId: string) => {
+    try {
+      await fetch(`${ENV.NODE_API_BASE_URL}/api/admission/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meetingId, userId, callerId: currentUserId, hostId: currentUserId }),
+      });
+      setPendingRequests(prev => prev.filter(r => r.userId !== userId));
+    } catch (e) { console.warn("Failed to approve admission", e); }
+  };
+
+  const handleShareInvite = async () => {
+    try {
+      await Share.share({
+        message: `Join my meeting on meet.ai!\n\nMeeting ID: ${meetingId}`,
+        title: "Join Meeting",
+      });
+    } catch (e) { console.warn("Share failed", e); }
+  };
+
+  const handleAdmitReject = async (userId: string) => {
+    try {
+      await fetch(`${ENV.NODE_API_BASE_URL}/api/admission/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meetingId, userId, callerId: currentUserId, hostId: currentUserId }),
+      });
+      setPendingRequests(prev => prev.filter(r => r.userId !== userId));
+    } catch (e) { console.warn("Failed to reject admission", e); }
+  };
+
   const handleAddTask = async () => {
     if (!newTaskTitle.trim()) return;
     setAddingTask(true);
@@ -330,7 +467,7 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     } catch (err: any) {
       console.error("addTask failed", err);
       Alert.alert(
-        "Error", 
+        "Error",
         err.message || "Failed to create task. Please verify that assignees are present in the meeting."
       );
     } finally {
@@ -429,6 +566,69 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     );
   }, [stageSize, videoTracks, speakingIds]);
 
+  // ── Guest admission screens ───────────────────────────────────────────
+  if (admissionPhase === "guest-requesting") {
+    return <LoadingState message="Sending join request..." />;
+  }
+
+  if (admissionPhase === "guest-waiting") {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.admissionCenterView}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.admissionHeading, { color: colors.foreground }]}>Waiting for approval</Text>
+          <Text style={[styles.admissionSubtext, { color: colors.mutedForeground }]}>
+            Your request has been sent. The host will admit you shortly.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (admissionPhase === "guest-rejected") {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.admissionCenterView}>
+          <View style={[styles.admissionIconCircle, { backgroundColor: colors.destructive + "20" }]}>
+            <Ionicons name="close" size={28} color={colors.destructive} />
+          </View>
+          <Text style={[styles.admissionHeading, { color: colors.foreground }]}>Request Declined</Text>
+          <Text style={[styles.admissionSubtext, { color: colors.mutedForeground }]}>
+            The host has declined your request to join.
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Dashboard")}
+            style={[styles.admissionActionBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>Return to Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (admissionPhase === "guest-timeout") {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.admissionCenterView}>
+          <View style={[styles.admissionIconCircle, { backgroundColor: colors.secondary }]}>
+            <Ionicons name="time-outline" size={28} color={colors.mutedForeground} />
+          </View>
+          <Text style={[styles.admissionHeading, { color: colors.foreground }]}>Request Timed Out</Text>
+          <Text style={[styles.admissionSubtext, { color: colors.mutedForeground }]}>
+            Your join request was not answered in time.
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate("Dashboard")}
+            style={[styles.admissionActionBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>Return to Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   // ── Guard ─────────────────────────────────────────────────────────────
   if (authLoading || loadingMeeting || isConnecting || !meeting) {
     return <LoadingState message="Connecting to meeting room..." />;
@@ -438,13 +638,46 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
   const isRecBusy = recState === "stopping" || recState === "uploading";
 
   const tabs: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { key: "meeting", label: "Live",  icon: "videocam-outline" },
-    { key: "tasks",   label: "Tasks", icon: "checkbox-outline" },
-    { key: "chat",    label: "Chat",  icon: "chatbubble-outline" },
+    { key: "meeting", label: "Live", icon: "videocam-outline" },
+    { key: "tasks", label: "Tasks", icon: "checkbox-outline" },
+    { key: "chat", label: "Chat", icon: "chatbubble-outline" },
   ];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+
+      {/* ── Host: Join Request Admission Modal ── */}
+      {isHost && pendingRequests.length > 0 && (
+        <Modal transparent animationType="slide" visible statusBarTranslucent>
+          <View style={styles.admissionOverlay}>
+            <View style={[styles.admissionPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.admissionPanelTitle, { color: colors.foreground }]}>Join Requests</Text>
+              {pendingRequests.map(req => (
+                <View key={req.userId} style={[styles.admissionPanelRow, { borderTopColor: colors.border + "40" }]}>
+                  <View style={styles.flex}>
+                    <Text style={{ fontWeight: "600", fontSize: 14, color: colors.foreground }}>{req.userName}</Text>
+                    <Text style={{ fontSize: 12, color: colors.mutedForeground }}>wants to join the meeting</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => handleAdmitReject(req.userId)}
+                      style={[styles.admissionPanelBtn, { backgroundColor: colors.secondary }]}
+                    >
+                      <Text style={{ color: colors.foreground, fontSize: 13, fontWeight: "600" }}>Reject</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleAdmit(req.userId)}
+                      style={[styles.admissionPanelBtn, { backgroundColor: colors.primary }]}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>Accept</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* ── Header ── */}
       <View style={[styles.header, { borderBottomColor: colors.border + "40" }]}>
@@ -459,7 +692,13 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
             <Text style={[styles.activeBadgeText, { color: "#22c55e" }]}>{t("active")}</Text>
           </View>
         </View>
-        <View style={{ width: 40 }} />
+        {isHost ? (
+          <TouchableOpacity onPress={handleShareInvite} style={styles.shareBtn}>
+            <Ionicons name="share-outline" size={20} color={colors.foreground} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 40 }} />
+        )}
       </View>
 
       {/* ── Tab bar ── */}
@@ -515,10 +754,10 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
                     {recState === "recording" && (
                       <><View style={styles.recDot} /><Text style={styles.recBadgeText}>REC {fmtTime(recElapsed)}</Text></>
                     )}
-                    {recState === "stopping"  && <Text style={styles.recBadgeText}>Stopping...</Text>}
+                    {recState === "stopping" && <Text style={styles.recBadgeText}>Stopping...</Text>}
                     {recState === "uploading" && <Text style={styles.recBadgeText}>Uploading...</Text>}
-                    {recState === "uploaded"  && <Text style={[styles.recBadgeText, { color: "#22c55e" }]}>✓ Saved</Text>}
-                    {recState === "error"     && <Text style={[styles.recBadgeText, { color: "#ef4444" }]}>⚠ Rec Error</Text>}
+                    {recState === "uploaded" && <Text style={[styles.recBadgeText, { color: "#22c55e" }]}>✓ Saved</Text>}
+                    {recState === "error" && <Text style={[styles.recBadgeText, { color: "#ef4444" }]}>⚠ Rec Error</Text>}
                   </View>
                 </View>
               )}
@@ -551,7 +790,7 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
                   isCompact && { width: btnSize, height: btnSize, borderRadius: btnRadius },
                   { backgroundColor: colors.secondary },
                   recState === "recording" && { borderColor: colors.destructive, borderWidth: 1 },
-                  recState === "uploaded"  && { borderColor: "#22c55e", borderWidth: 1 },
+                  recState === "uploaded" && { borderColor: "#22c55e", borderWidth: 1 },
                   isRecBusy && { opacity: 0.5 },
                 ]}
               >
@@ -707,7 +946,7 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  flex:      { flex: 1 },
+  flex: { flex: 1 },
 
   header: {
     height: 64,
@@ -717,18 +956,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     borderBottomWidth: 1,
   },
-  backBtn:       { padding: 4 },
-  titleRow:      { flex: 1, marginHorizontal: spacing.md, alignItems: "center" },
-  title:         { ...typography.h3, flex: 1 },
-  activeBadge:   { paddingHorizontal: 8, paddingVertical: 2, borderRadius: borderRadius.full, borderWidth: 1, marginTop: 2 },
+  backBtn: { padding: 4 },
+  shareBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  titleRow: { flex: 1, marginHorizontal: spacing.md, alignItems: "center" },
+  title: { ...typography.h3, flex: 1 },
+  activeBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: borderRadius.full, borderWidth: 1, marginTop: 2 },
   activeBadgeText: { fontSize: 10, fontWeight: "bold" },
 
   tabBar: { flexDirection: "row", height: 48, borderBottomWidth: 1 },
-  tab:    { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderBottomWidth: 2, borderBottomColor: "transparent" },
   tabLabel: { fontSize: 13, fontWeight: "600" },
 
   meetingView: { flex: 1, padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.md },
-  videoStage:  { flex: 1, position: "relative" },
+  videoStage: { flex: 1, position: "relative" },
   videoStream: { width: "100%", height: "100%" },
 
   // Participant name tag
@@ -746,32 +986,32 @@ const styles = StyleSheet.create({
     maxWidth: "85%",
   },
   nameTagText: { color: "#fff", fontSize: 12, fontWeight: "600", flexShrink: 1 },
-  speakDot:    { width: 6, height: 6, borderRadius: 3, backgroundColor: "#22c55e" },
+  speakDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#22c55e" },
 
-  placeholder:      { flex: 1, borderRadius: borderRadius.xl, alignItems: "center", justifyContent: "center", padding: spacing.xl },
+  placeholder: { flex: 1, borderRadius: borderRadius.xl, alignItems: "center", justifyContent: "center", padding: spacing.xl },
   placeholderTitle: { ...typography.h3, marginTop: spacing.md },
-  placeholderSub:   { ...typography.bodySmall, textAlign: "center", marginTop: 4 },
+  placeholderSub: { ...typography.bodySmall, textAlign: "center", marginTop: 4 },
 
   // Recording overlay
-  recOverlay:     { position: "absolute", top: 8, left: 8, zIndex: 10 },
-  recBadge:       { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.65)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: borderRadius.full, gap: 6 },
-  recBadgeSuccess:{ backgroundColor: "rgba(34,197,94,0.2)" },
-  recDot:         { width: 8, height: 8, borderRadius: 4, backgroundColor: "#ef4444" },
-  recBadgeText:   { color: "#fff", fontSize: 12, fontWeight: "700" },
+  recOverlay: { position: "absolute", top: 8, left: 8, zIndex: 10 },
+  recBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.65)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: borderRadius.full, gap: 6 },
+  recBadgeSuccess: { backgroundColor: "rgba(34,197,94,0.2)" },
+  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#ef4444" },
+  recBadgeText: { color: "#fff", fontSize: 12, fontWeight: "700" },
 
   // Control bar
   controlBar: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: spacing.sm, borderRadius: borderRadius.full, borderWidth: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-  roundBtn:   { alignItems: "center", justifyContent: "center" },
-  wideBtn:    { height: 40, paddingHorizontal: spacing.md, borderRadius: borderRadius.full, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
-  wideBtnText:{ fontSize: 13, fontWeight: "600" },
-  recDotBtn:  { width: 8, height: 8, borderRadius: 4 },
-  divider:    { width: 1, height: 24, marginHorizontal: 4 },
+  roundBtn: { alignItems: "center", justifyContent: "center" },
+  wideBtn: { height: 40, paddingHorizontal: spacing.md, borderRadius: borderRadius.full, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+  wideBtnText: { fontSize: 13, fontWeight: "600" },
+  recDotBtn: { width: 8, height: 8, borderRadius: 4 },
+  divider: { width: 1, height: 24, marginHorizontal: 4 },
 
   // Tasks
   taskInputSection: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
-  taskInputRow:     { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
-  assigneeRow:      { flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs, paddingHorizontal: 4 },
-  assigneeText:     { fontSize: 12, fontWeight: "500", flex: 1 },
+  taskInputRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
+  assigneeRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs, paddingHorizontal: 4 },
+  assigneeText: { fontSize: 12, fontWeight: "500", flex: 1 },
 
   // @mention picker
   mentionBox: {
@@ -783,7 +1023,7 @@ const styles = StyleSheet.create({
   },
   mentionItem: { flexDirection: "row", alignItems: "center", padding: spacing.md, borderBottomWidth: 1, gap: spacing.sm },
   mentionName: { ...typography.bodySmall, flex: 1 },
-  mentionYou:  { ...typography.caption },
+  mentionYou: { ...typography.caption },
   mentionEmpty: { padding: spacing.md, alignItems: "center", justifyContent: "center" },
 
   chipsContainer: {
@@ -810,11 +1050,25 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  input:       { flex: 1, height: 40, borderRadius: borderRadius.lg, paddingHorizontal: spacing.md, fontSize: 14 },
+  input: { flex: 1, height: 40, borderRadius: borderRadius.lg, paddingHorizontal: spacing.md, fontSize: 14 },
   listContent: { padding: spacing.lg, paddingBottom: 100 },
-  emptyText:   { ...typography.bodySmall, textAlign: "center", marginTop: spacing["5xl"] },
+  emptyText: { ...typography.bodySmall, textAlign: "center", marginTop: spacing["5xl"] },
 
-  chatContent:  { paddingVertical: spacing.lg },
+  chatContent: { paddingVertical: spacing.lg },
   chatInputRow: { flexDirection: "row", alignItems: "flex-end", padding: spacing.md, borderTopWidth: 1, gap: spacing.md },
-  chatInput:    { flex: 1, minHeight: 40, maxHeight: 100, borderRadius: borderRadius.xl, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, fontSize: 14 },
+  chatInput: { flex: 1, minHeight: 40, maxHeight: 100, borderRadius: borderRadius.xl, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, fontSize: 14 },
+
+  // Guest admission screens
+  admissionCenterView: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.md },
+  admissionHeading: { fontSize: 22, fontWeight: "700", textAlign: "center", marginTop: spacing.md },
+  admissionSubtext: { fontSize: 14, textAlign: "center", lineHeight: 20 },
+  admissionIconCircle: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
+  admissionActionBtn: { marginTop: spacing.lg, paddingHorizontal: spacing.xl, paddingVertical: 14, borderRadius: borderRadius.lg },
+
+  // Host admission modal
+  admissionOverlay: { flex: 1, justifyContent: "flex-end" },
+  admissionPanel: { borderTopWidth: 1, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.lg, paddingBottom: 32, shadowColor: "#000", shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 8 },
+  admissionPanelTitle: { fontSize: 17, fontWeight: "700", marginBottom: spacing.sm },
+  admissionPanelRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, borderTopWidth: 1, gap: spacing.md },
+  admissionPanelBtn: { paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: borderRadius.lg },
 });

@@ -26,4 +26,5 @@ export const ENV = {
   // LiveKit
   LIVEKIT_URL: "wss://meet-ai-79lby4wd.livekit.cloud",
   LIVEKIT_TOKEN_ENDPOINT: `http://${localhost}:8000/api/livekit/token`,
+  NODE_API_BASE_URL: `http://${localhost}:3001`,
 } as const;

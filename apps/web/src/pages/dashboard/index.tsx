@@ -5,7 +5,7 @@ import { Header } from "@/features/marketing/components/header"
 import { useAuth } from "@/app/providers/auth-provider"
 import { createMeeting, subscribeToMeetings, Meeting } from "@/shared/lib/firebase/services/meetings"
 import { subscribeToOpenTasksForMeetings, subscribeToDoneTasksForMeetings, updateTaskStatus, Task } from "@/shared/lib/firebase/services/tasks"
-import { Calendar, Video, CheckSquare, CheckCircle2, FileText, Plus, LogOut, Circle } from "lucide-react"
+import { Calendar, Video, CheckSquare, CheckCircle2, Plus, LogOut, Circle, LogIn, Copy, Check, Link } from "lucide-react"
 import { motion } from "framer-motion"
 
 export default function DashboardPage() {
@@ -15,6 +15,9 @@ export default function DashboardPage() {
   
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [isCreating, setIsCreating] = useState(false)
+  const [showJoinDialog, setShowJoinDialog] = useState(false)
+  const [joinMeetingId, setJoinMeetingId] = useState("")
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!currentUser) return
@@ -56,6 +59,21 @@ export default function DashboardPage() {
     return meetings.find(m => m.id === meetingId)
   }
 
+  const handleJoinMeeting = () => {
+    const id = joinMeetingId.trim()
+    if (!id) return
+    setShowJoinDialog(false)
+    setJoinMeetingId("")
+    navigate(`/meeting-room/${id}`)
+  }
+
+  const handleCopyInviteLink = (meetingId: string) => {
+    const link = `${window.location.origin}/meeting-room/${meetingId}`
+    navigator.clipboard.writeText(link)
+    setCopiedId(meetingId)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
   const handleCreateMeeting = async () => {
     if (!currentUser) return
     setIsCreating(true)
@@ -88,7 +106,53 @@ export default function DashboardPage() {
             <p className="text-muted-foreground">{t("welcomeSubtitle")}</p>
           </div>
           <div className="flex items-center gap-3">
-            <button 
+            {/* Join Meeting */}
+            <div className="relative">
+              <button
+                onClick={() => setShowJoinDialog(v => !v)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg border border-border bg-card text-foreground font-medium hover:bg-accent transition-colors"
+              >
+                <LogIn className="w-4 h-4" />
+                Join Meeting
+              </button>
+
+              {showJoinDialog && (
+                <>
+                  {/* Backdrop */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => { setShowJoinDialog(false); setJoinMeetingId("") }}
+                  />
+                  {/* Dropdown panel */}
+                  <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-xl border border-border bg-card shadow-xl p-4 space-y-3">
+                    <div className="space-y-1">
+                      <p className="font-semibold text-sm">Join a Meeting</p>
+                      <p className="text-xs text-muted-foreground">Paste the Meeting ID shared by the host.</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="Meeting ID"
+                        value={joinMeetingId}
+                        onChange={e => setJoinMeetingId(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && handleJoinMeeting()}
+                        className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      <button
+                        onClick={handleJoinMeeting}
+                        disabled={!joinMeetingId.trim()}
+                        className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-40"
+                      >
+                        Join
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button
               onClick={handleCreateMeeting}
               disabled={isCreating}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
@@ -96,7 +160,7 @@ export default function DashboardPage() {
               <Video className="w-4 h-4" />
               {isCreating ? t("startingMeeting") : t("startMeeting")}
             </button>
-            <button 
+            <button
               onClick={async () => { await signOut(); navigate('/login') }}
               className="flex items-center justify-center p-2.5 rounded-lg border border-border bg-card hover:bg-accent text-muted-foreground transition-colors"
               title={t("signOut")}
@@ -138,12 +202,14 @@ export default function DashboardPage() {
               ) : (
                 <div className="divide-y divide-border/40">
                   {meetings.map(m => (
-                    <div 
-                      key={m.id} 
-                      onClick={() => navigate(m.status === "ended" ? `/meetings/${m.id}/summary` : `/meeting-room/${m.id}`)}
-                      className="flex justify-between items-center p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    <div
+                      key={m.id}
+                      className="flex justify-between items-center p-4 hover:bg-muted/50 transition-colors group"
                     >
-                      <div className="space-y-1">
+                      <div
+                        className="space-y-1 flex-1 cursor-pointer"
+                        onClick={() => navigate(m.status === "ended" ? `/meetings/${m.id}/summary` : `/meeting-room/${m.id}`)}
+                      >
                         <p className={`font-medium ${m.status === "ended" ? "text-muted-foreground" : "text-foreground"}`}>
                           {m.title === "User's Meeting" ? `${currentUser?.displayName || currentUser?.email?.split('@')[0]}'s Meeting` : m.title}
                         </p>
@@ -157,13 +223,30 @@ export default function DashboardPage() {
                           )}
                         </p>
                       </div>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-                        m.status === "active" 
-                          ? "bg-green-500/10 text-green-500 border-green-500/20" 
-                          : "bg-secondary text-secondary-foreground border-border/50"
-                      }`}>
-                        {m.status === "active" ? t("active") : t("ended")}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {m.status === "active" && (
+                          <button
+                            onClick={e => { e.stopPropagation(); handleCopyInviteLink(m.id) }}
+                            title="Copy invite link"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background hover:bg-accent text-xs font-medium text-muted-foreground hover:text-foreground"
+                          >
+                            {copiedId === m.id
+                              ? <><Check className="w-3 h-3 text-green-500" /> Copied</>
+                              : <><Link className="w-3 h-3" /> Invite Link</>
+                            }
+                          </button>
+                        )}
+                        <span
+                          onClick={() => navigate(m.status === "ended" ? `/meetings/${m.id}/summary` : `/meeting-room/${m.id}`)}
+                          className={`cursor-pointer px-2.5 py-1 rounded-full text-xs font-medium border ${
+                            m.status === "active"
+                              ? "bg-green-500/10 text-green-500 border-green-500/20"
+                              : "bg-secondary text-secondary-foreground border-border/50"
+                          }`}
+                        >
+                          {m.status === "active" ? t("active") : t("ended")}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>

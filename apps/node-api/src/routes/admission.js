@@ -48,20 +48,22 @@ router.post("/request", async (req, res) => {
     return res.status(400).json({ success: false, error: "Missing required fields" });
   }
 
-  // Rate limiting check
-  if (isRateLimited(userId)) {
+  // Rate limiting check (only for genuinely new requests, not retries)
+  const existing = getRequest(meetingId, userId);
+  if (!existing && isRateLimited(userId)) {
     logAdmissionEvent('RATE_LIMIT_REJECTED', meetingId, userId, 'N/A', { reason: 'Too many requests' });
     return res.status(429).json({ success: false, error: "Too many requests" });
   }
 
-  // Prevent duplicate join requests
-  if (getRequest(meetingId, userId)) {
-    logAdmissionEvent('DUPLICATE_REJECTED', meetingId, userId, 'N/A', { reason: 'Already pending' });
-    return res.status(409).json({ success: false, error: "Join request already pending" });
+  // Idempotent: remove any existing pending request and create a fresh one.
+  // This handles React StrictMode double-invocation in dev and legitimate retries.
+  if (existing) {
+    removeRequest(meetingId, userId);
+    logAdmissionEvent('DUPLICATE_REFRESHED', meetingId, userId, existing.requestId, { reason: 'Re-request' });
   }
 
   // 1. Store request in in-memory Map
-  addRequest(meetingId, userId, userName);
+  const request = addRequest(meetingId, userId, userName);
 
   // 2. Generate restricted waiting token
   let waitingToken;

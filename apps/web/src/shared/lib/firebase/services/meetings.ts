@@ -17,13 +17,13 @@ export async function createMeeting(userId: string, title: string) {
     status: "active",
     createdAt: serverTimestamp()
   }
-  
+
   // We don't include id in the document itself, we append it after document creation
   const docRef = await addDoc(collection(db, "meetings"), newMeeting)
-  
-  return { 
-    id: docRef.id, 
-    ...newMeeting 
+
+  return {
+    id: docRef.id,
+    ...newMeeting
   } as unknown as Meeting
 }
 
@@ -32,7 +32,7 @@ export function subscribeToMeetings(userId: string, onUpdate: (meetings: Meeting
     collection(db, "meetings"),
     where("userId", "==", userId)
   )
-  
+
   return onSnapshot(q, (snapshot) => {
     const meetings = snapshot.docs.map((doc) => ({
       id: doc.id,

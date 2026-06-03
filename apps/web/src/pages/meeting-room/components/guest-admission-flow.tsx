@@ -17,7 +17,9 @@ export function GuestAdmissionFlow({
 }) {
   const { t } = useTranslation("meeting");
   const [waitingToken, setWaitingToken] = useState<string | null>(null);
-  const [status, setStatus] = useState<"requesting" | "waiting" | "rejected" | "timeout">("requesting");
+  const [status, setStatus] = useState<"requesting" | "waiting" | "rejected" | "timeout" | "error">("requesting");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -49,22 +51,48 @@ export function GuestAdmissionFlow({
           setStatus(prev => prev === "waiting" ? "timeout" : prev);
         }, 30000);
         
-      } catch (err) {
+      } catch (err: any) {
         logError("Failed to request admission", { error: err, meetingId: meeting.id, userId: currentUser.uid });
-        setStatus("rejected"); // Or a generic error state
+        const isNetworkError = err instanceof TypeError && err.message.includes("fetch");
+        setErrorMessage(
+          isNetworkError
+            ? "Could not reach the server. Make sure node-api is running on port 3001."
+            : err?.message || "An unexpected error occurred."
+        );
+        setStatus("error");
       }
     };
     
     requestAdmission();
 
     return () => clearTimeout(timeoutId);
-  }, [meeting.id, currentUser]);
+  }, [meeting.id, currentUser, retryKey]);
 
   if (status === "requesting") {
     return (
       <div className="flex flex-col min-h-screen bg-background items-center justify-center">
         <div className="w-8 h-8 rounded-full border-4 border-primary border-t-transparent animate-spin mb-4" />
         <p className="text-muted-foreground animate-pulse font-medium">{t("requestingJoin")}</p>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="flex flex-col min-h-screen bg-background text-foreground items-center justify-center p-8">
+        <div className="text-center space-y-4 max-w-md w-full p-8 border border-border/40 bg-card rounded-2xl shadow-sm">
+          <div className="mx-auto w-12 h-12 bg-destructive/10 text-destructive flex items-center justify-center rounded-full mb-4">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Connection Error</h1>
+          <p className="text-muted-foreground text-sm">{errorMessage}</p>
+          <button
+            onClick={() => { setStatus("requesting"); setErrorMessage(null); setRetryKey(k => k + 1); }}
+            className="mt-2 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors w-full"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     );
   }

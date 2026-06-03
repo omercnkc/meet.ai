@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next"
 import { Header } from "@/features/marketing/components/header"
 import { useAuth } from "@/app/providers/auth-provider"
 import { subscribeToMeeting, Meeting, endMeeting } from "@/shared/lib/firebase/services/meetings"
-import { Video, Share2, AlertCircle } from "lucide-react"
+import { Video, Share2, AlertCircle, Check, Users } from "lucide-react"
 import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useConnectionState } from "@livekit/components-react"
 import { ConnectionState } from "livekit-client"
 import { getLiveKitToken, LIVEKIT_URL } from "@/shared/lib/livekit/token-service"
@@ -34,6 +34,8 @@ export default function MeetingRoomPage() {
 
   // PiP & Overlay State
   const [pipWindow, setPipWindow] = useState<Window | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
   const [pipHint, setPipHint] = useState(false)
   const [isOverlayHidden, setIsOverlayHidden] = useState(false)
   const [isPipHiddenForSession, setIsPipHiddenForSession] = useState(false)
@@ -69,17 +71,17 @@ export default function MeetingRoomPage() {
     if (import.meta.env.DEV && meeting.participantIds === undefined) {
       console.warn("Meeting.participantIds is undefined. Schema might have been updated to single userId.");
     }
-    
+
     const hostId = (meeting as any).hostId || meeting.userId;
     const participants = (meeting as any).participantIds || [];
-    
+
     return currentUser.uid !== hostId && !(Array.isArray(participants) && participants.includes(currentUser.uid));
   })() : false;
 
   useEffect(() => {
     if (!meeting || !currentUser || !meetingId) return
     if (isGuest) return // Guests get token via admission flow
-    
+
     getLiveKitToken(meetingId, currentUser)
       .then((tk) => {
         setToken(tk);
@@ -94,21 +96,21 @@ export default function MeetingRoomPage() {
   // ─── PiP Helpers ───
   const copyStylesToWindow = useCallback((target: Window) => {
     target.document.documentElement.className = document.documentElement.className
-    ;[...document.styleSheets].forEach((sheet) => {
-      try {
-        const cssText = [...sheet.cssRules].map((r) => r.cssText).join("\n")
-        const style = target.document.createElement("style")
-        style.textContent = cssText
-        target.document.head.appendChild(style)
-      } catch {
-        if (sheet.href) {
-          const link = target.document.createElement("link")
-          link.rel = "stylesheet"
-          link.href = sheet.href
-          target.document.head.appendChild(link)
+      ;[...document.styleSheets].forEach((sheet) => {
+        try {
+          const cssText = [...sheet.cssRules].map((r) => r.cssText).join("\n")
+          const style = target.document.createElement("style")
+          style.textContent = cssText
+          target.document.head.appendChild(style)
+        } catch {
+          if (sheet.href) {
+            const link = target.document.createElement("link")
+            link.rel = "stylesheet"
+            link.href = sheet.href
+            target.document.head.appendChild(link)
+          }
         }
-      }
-    })
+      })
   }, [])
 
   const openPipWindow = useCallback(async (): Promise<Window | null> => {
@@ -211,7 +213,7 @@ export default function MeetingRoomPage() {
 
     window.addEventListener("blur", handleBlur)
     window.addEventListener("focus", handleFocus)
-    
+
     return () => {
       window.removeEventListener("blur", handleBlur)
       window.removeEventListener("focus", handleFocus)
@@ -236,7 +238,8 @@ export default function MeetingRoomPage() {
 
   const handleShareInvite = () => {
     navigator.clipboard.writeText(window.location.href)
-    alert(t("inviteCopied"))
+    setInviteCopied(true)
+    setTimeout(() => setInviteCopied(false), 2000)
   }
 
   const handleLeave = async () => {
@@ -262,7 +265,7 @@ export default function MeetingRoomPage() {
       }
     }
     if (pipWindow && !pipWindow.closed) pipWindow.close()
-    
+
     try {
       await endMeeting(meetingId!)
     } catch (err) {
@@ -340,9 +343,9 @@ export default function MeetingRoomPage() {
   // ─── Guest Flow ───
   if (isGuest && !token) {
     return (
-      <GuestAdmissionFlow 
-        meeting={meeting} 
-        currentUser={currentUser!} 
+      <GuestAdmissionFlow
+        meeting={meeting}
+        currentUser={currentUser!}
         onAdmitted={(approvedToken) => {
           logAdmissionEvent("GUEST_UPGRADED_TO_FULL_TOKEN", meeting.id, currentUser!.uid);
           // Assuming we need to get the real token via getLiveKitToken or use the one from payload. 
@@ -353,7 +356,7 @@ export default function MeetingRoomPage() {
               logAdmissionEvent("FULL_TOKEN_GENERATED", meeting.id, currentUser!.uid, { role: "guest" });
             })
             .catch(err => logError("Failed to fetch full token for guest", { error: err }));
-        }} 
+        }}
       />
     )
   }
@@ -388,10 +391,11 @@ export default function MeetingRoomPage() {
       />
 
       {meeting && (
-        <AdmissionControlListener 
-          meetingId={meetingId!} 
-          hostId={(meeting as any).hostId || meeting.userId} 
-          currentUserId={currentUser?.uid} 
+        <AdmissionControlListener
+          meetingId={meetingId!}
+          hostId={(meeting as any).hostId || meeting.userId}
+          currentUserId={currentUser?.uid}
+          onPendingChange={setPendingCount}
         />
       )}
 
@@ -410,15 +414,33 @@ export default function MeetingRoomPage() {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium hidden sm:block bg-muted px-3 py-1.5 rounded-md text-muted-foreground">
-            {t("participantsCount", { count: Array.isArray((meeting as any).participantIds) ? (meeting as any).participantIds.length : 1 })}
-          </span>
+          {/* Pending join requests badge — only for host */}
+          {((meeting as any).hostId || meeting.userId) === currentUser?.uid && (
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              pendingCount > 0
+                ? "bg-amber-500/10 text-amber-500 border border-amber-500/30 animate-pulse"
+                : "bg-muted text-muted-foreground border border-transparent"
+            }`}>
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">
+                {pendingCount > 0 ? `${pendingCount} waiting` : "No requests"}
+              </span>
+              {pendingCount > 0 && (
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold leading-none">
+                  {pendingCount}
+                </span>
+              )}
+            </div>
+          )}
+
           <button
             onClick={handleShareInvite}
             className="flex items-center gap-2 px-4 py-1.5 rounded-md border border-input bg-background font-medium hover:bg-accent hover:text-accent-foreground transition-colors text-sm"
           >
-            <Share2 className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("shareInvite")}</span>
+            {inviteCopied
+              ? <><Check className="w-4 h-4 text-green-500" /><span className="hidden sm:inline text-green-500">Copied!</span></>
+              : <><Share2 className="w-4 h-4" /><span className="hidden sm:inline">{t("shareInvite")}</span></>
+            }
           </button>
         </div>
       </header>
@@ -463,11 +485,11 @@ export default function MeetingRoomPage() {
       {/* Document PiP Portal (External window overlay) */}
       {pipWindow && !pipWindow.closed && createPortal(
         <>
-          <PipContent 
+          <PipContent
             onReturn={handleReturnToMeet}
             onHide={handleHidePip}
           />
-          
+
           {/* Custom Bottom Sharing Overlay (Rendered inside the PiP window) */}
           {isOverlayVisible && (
             <div
@@ -510,7 +532,7 @@ function LocalParticipantCapture({
   onScreenShareStateChange: (isSharing: boolean) => void
 }) {
   const { localParticipant } = useLocalParticipant()
-  
+
   useEffect(() => {
     participantRef.current = localParticipant
   }, [localParticipant, participantRef])
@@ -530,17 +552,17 @@ function LocalParticipantCapture({
 function ConnectionStatusOverlay() {
   const { t } = useTranslation("meeting");
   const state = useConnectionState()
-  
+
   if (state === ConnectionState.Connected) return null
-  
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md">
       <div className="flex flex-col items-center gap-4 p-8 bg-card rounded-2xl shadow-xl border border-border/50 text-center max-w-sm mx-4">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
         <p className="text-lg font-medium text-foreground">
-          {state === ConnectionState.Connecting ? t("connectingMeeting") : 
-           state === ConnectionState.Reconnecting ? t("reconnecting") : 
-           state === ConnectionState.Disconnected ? t("disconnected") : t("connecting")}
+          {state === ConnectionState.Connecting ? t("connectingMeeting") :
+            state === ConnectionState.Reconnecting ? t("reconnecting") :
+              state === ConnectionState.Disconnected ? t("disconnected") : t("connecting")}
         </p>
       </div>
     </div>

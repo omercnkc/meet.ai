@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, useWindowDimensions, Modal, TextInput, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing, typography, borderRadius } from "../theme";
 import { useAuth } from "../hooks/useAuth";
@@ -26,12 +26,22 @@ export default function DashboardScreen({ navigation }: Props) {
   const { meetings, loading: meetingsLoading } = useMeetings(currentUser?.uid);
   
   const [isCreating, setIsCreating] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [joinMeetingId, setJoinMeetingId] = useState("");
 
   const endedMeetingIds = useMemo(() => meetings.filter((m) => m.status === "ended").map((m) => m.id), [meetings]);
   
   const { tasks: openTasks, loading: openTasksLoading } = useOpenTasksForMeetings(endedMeetingIds);
   const { tasks: doneTasks, loading: doneTasksLoading } = useDoneTasksForMeetings(endedMeetingIds);
   
+  const handleJoinMeeting = () => {
+    const id = joinMeetingId.trim();
+    if (!id) return;
+    setShowJoinModal(false);
+    setJoinMeetingId("");
+    navigation.navigate("ActiveMeeting", { meetingId: id });
+  };
+
   const handleCreateMeeting = async () => {
     if (!currentUser) return;
     const uid = currentUser.uid ?? (currentUser as any).userId;
@@ -174,6 +184,49 @@ export default function DashboardScreen({ navigation }: Props) {
 
   return (
     <ScreenContainer scrollable>
+      {/* Join Meeting Modal */}
+      <Modal
+        visible={showJoinModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowJoinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.foreground }]}>Join a Meeting</Text>
+            <Text style={[styles.modalSubtitle, { color: colors.mutedForeground }]}>
+              Paste the meeting ID shared by the host.
+            </Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.secondary, color: colors.foreground, borderColor: colors.border }]}
+              placeholder="Meeting ID"
+              placeholderTextColor={colors.mutedForeground}
+              value={joinMeetingId}
+              onChangeText={setJoinMeetingId}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={handleJoinMeeting}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => { setShowJoinModal(false); setJoinMeetingId(""); }}
+                style={[styles.modalBtn, { backgroundColor: colors.secondary }]}
+              >
+                <Text style={{ color: colors.foreground, fontWeight: "600" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleJoinMeeting}
+                disabled={!joinMeetingId.trim()}
+                style={[styles.modalBtn, { backgroundColor: joinMeetingId.trim() ? colors.primary : colors.secondary }]}
+              >
+                <Text style={{ color: joinMeetingId.trim() ? "#fff" : colors.mutedForeground, fontWeight: "600" }}>Join</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Top Navbar */}
       <View style={styles.navbar}>
         <Text style={[styles.logoText, { color: colors.foreground }]}>
@@ -208,15 +261,25 @@ export default function DashboardScreen({ navigation }: Props) {
         </Text>
       </View>
 
-      {/* Main CTA */}
-      <AppButton
-        title={isCreating ? t("startingMeeting") : t("startMeeting")}
-        onPress={handleCreateMeeting}
-        loading={isCreating}
-        size="md"
-        icon={<Ionicons name="videocam" size={20} color={colors.primaryForeground} />}
-        style={{ marginBottom: spacing.xl }}
-      />
+      {/* Main CTAs */}
+      <View style={styles.ctaRow}>
+        <View style={styles.ctaPrimary}>
+          <AppButton
+            title={isCreating ? t("startingMeeting") : t("startMeeting")}
+            onPress={handleCreateMeeting}
+            loading={isCreating}
+            size="md"
+            icon={<Ionicons name="videocam" size={20} color={colors.primaryForeground} />}
+          />
+        </View>
+        <TouchableOpacity
+          onPress={() => setShowJoinModal(true)}
+          style={[styles.joinBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+        >
+          <Ionicons name="enter-outline" size={20} color={colors.foreground} />
+          <Text style={[styles.joinBtnText, { color: colors.foreground }]}>Join</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Responsive Dashboard Grid */}
       {isTablet ? (
@@ -322,9 +385,24 @@ const styles = StyleSheet.create({
     alignItems: "center", 
     justifyContent: "center",
   },
-  taskHint: { 
-    ...typography.bodySmall, 
-    fontStyle: "italic", 
+  taskHint: {
+    ...typography.bodySmall,
+    fontStyle: "italic",
     textAlign: "center",
   },
+
+  // CTA row
+  ctaRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.xl, alignItems: "stretch" },
+  ctaPrimary: { flex: 1 },
+  joinBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: spacing.lg, borderRadius: borderRadius.lg, borderWidth: 1 },
+  joinBtnText: { fontSize: 15, fontWeight: "600" },
+
+  // Join modal
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: spacing.xl },
+  modalBox: { width: "100%", borderRadius: 16, borderWidth: 1, padding: spacing.lg, gap: spacing.md },
+  modalTitle: { fontSize: 18, fontWeight: "700" },
+  modalSubtitle: { fontSize: 13, lineHeight: 18 },
+  modalInput: { height: 44, borderWidth: 1, borderRadius: borderRadius.lg, paddingHorizontal: spacing.md, fontSize: 14 },
+  modalActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end", marginTop: spacing.xs },
+  modalBtn: { paddingHorizontal: spacing.lg, paddingVertical: 10, borderRadius: borderRadius.lg },
 });
