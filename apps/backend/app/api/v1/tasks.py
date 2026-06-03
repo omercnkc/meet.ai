@@ -11,12 +11,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
-import httpx
 from firebase_admin import firestore
 from livekit.api import LiveKitAPI, ListParticipantsRequest
 
 from app.core.config import settings
 from app.integrations.firebase_admin import verify_firebase_token
+from app.integrations.n8n import notify_n8n_task_assigned
 
 logger = logging.getLogger(__name__)
 
@@ -41,74 +41,11 @@ class AssigneeSchema(BaseModel):
 class TaskCreateRequest(BaseModel):
     meetingId: str = Field(..., alias="meetingId")
     title: str
-    selectedAssignees: List[AssigneeSchema] = Field(default=[], alias="selectedAssignees")
+    selectedAssignees: Optional[List[AssigneeSchema]] = Field(default=None, alias="selectedAssignees")
+    assignees: Optional[List[AssigneeSchema]] = Field(default=None)
 
     class Config:
         populate_by_name = True
-
-
-async def trigger_n8n_webhook(task_id: str, meeting_id: str, title: str, created_at_iso: str, assignees: list):
-    webhook_url = settings.N8N_TASK_WEBHOOK_URL
-    if not webhook_url:
-        logger.info("[Tasks] n8n webhook url not configured. Skipping webhook.")
-        return
-
-    # ── Verify and filter assignees ──
-    if not assignees:
-        logger.warning("[Tasks] No assignees found for task %s. Skipping n8n webhook.", task_id)
-        return
-
-    valid_assignees = []
-    for a in assignees:
-        if not a.get("email"):
-            logger.warning(
-                "[Tasks] Assignee '%s' (%s) does not have an email address. Skipping this assignee.",
-                a.get("name"),
-                a.get("userId")
-            )
-            continue
-        valid_assignees.append(a)
-
-    if not valid_assignees:
-        logger.warning(
-            "[Tasks] No assignees with valid email addresses found for task %s. Skipping n8n webhook.",
-            task_id
-        )
-        return
-
-    logger.info("[Tasks] Triggering n8n webhook for task_id=%s to %s", task_id, webhook_url)
-    try:
-        headers = {
-            "Content-Type": "application/json"
-        }
-        if settings.N8N_WEBHOOK_SECRET:
-            headers["Authorization"] = f"Bearer {settings.N8N_WEBHOOK_SECRET}"
-
-        payload = {
-            "event": "task_assigned",
-            "meetingId": meeting_id,
-            "task": {
-                "id": task_id,
-                "title": title,
-                "status": "open",
-                "createdAt": created_at_iso
-            },
-            "assignees": [
-                {
-                    "userId": a.get("userId"),
-                    "name": a.get("name"),
-                    "email": a.get("email")
-                }
-                for a in valid_assignees
-            ]
-        }
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(webhook_url, json=payload, headers=headers, timeout=10.0)
-            response.raise_for_status()
-            logger.info("[Tasks] n8n webhook response: %d", response.status_code)
-    except Exception as exc:
-        logger.error("[Tasks] Failed to trigger n8n webhook: %s", exc)
 
 
 @router.post(
@@ -142,8 +79,21 @@ async def create_task_endpoint(
             detail="task title is required.",
         )
 
+    # ── Resolve Assignees from request body fields ──
+    # If the frontend sends `assignees`, use it; if it sends `selectedAssignees`, keep it.
+    if "assignees" in body.__fields_set__:
+        assignees_list = body.assignees if body.assignees is not None else []
+    elif "selectedAssignees" in body.__fields_set__:
+        assignees_list = body.selectedAssignees if body.selectedAssignees is not None else []
+    else:
+        # Fallback if neither was explicitly set in fields_set
+        assignees_list = body.assignees if body.assignees is not None else (body.selectedAssignees if body.selectedAssignees is not None else [])
+    
+    # [DEBUG] log: selected assignees received
+    logger.info("[Tasks] [DEBUG] selected assignees received: %s", assignees_list)
+
     # ── Verify that each selected assignee is a participant of the meeting ──
-    if body.selectedAssignees:
+    if assignees_list:
         lk_api = LiveKitAPI(settings.LIVEKIT_URL, settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
         try:
             res = await lk_api.room.list_participants(ListParticipantsRequest(room=body.meetingId))
@@ -157,7 +107,7 @@ async def create_task_endpoint(
         finally:
             await lk_api.aclose()
 
-        for assignee in body.selectedAssignees:
+        for assignee in assignees_list:
             if assignee.userId not in active_ids:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -182,21 +132,23 @@ async def create_task_endpoint(
                     "name": a.name,
                     "email": a.email
                 }
-                for a in body.selectedAssignees
+                for a in assignees_list
             ]
         }
         
         # Set deprecated fields for backwards compatibility with existing UI if they only display one assignee
-        if body.selectedAssignees:
-            task_data["assignedToUserId"] = body.selectedAssignees[0].userId
-            task_data["assignedToName"] = body.selectedAssignees[0].name
+        if assignees_list:
+            task_data["assignedToUserId"] = assignees_list[0].userId
+            task_data["assignedToName"] = assignees_list[0].name
         else:
             task_data["assignedToUserId"] = None
             task_data["assignedToName"] = None
 
         _, doc_ref = db.collection("tasks").add(task_data)
         task_id = doc_ref.id
-        logger.info("[Tasks] Created task_id=%s for meeting_id=%s", task_id, body.meetingId)
+        
+        # [DEBUG] log: task created successfully
+        logger.info("[Tasks] [DEBUG] task created successfully: ID=%s, meetingId=%s", task_id, body.meetingId)
         
     except Exception as exc:
         logger.exception("[Tasks] Failed to save task to Firestore")
@@ -208,12 +160,12 @@ async def create_task_endpoint(
     # ── Trigger n8n webhook ──
     if background_tasks:
         background_tasks.add_task(
-            trigger_n8n_webhook,
+            notify_n8n_task_assigned,
             task_id,
             body.meetingId,
             body.title,
             created_at_iso,
-            [{"userId": a.userId, "name": a.name, "email": a.email} for a in body.selectedAssignees]
+            [{"userId": a.userId, "name": a.name, "email": a.email} for a in assignees_list]
         )
 
     return {
@@ -222,5 +174,5 @@ async def create_task_endpoint(
         "title": body.title,
         "status": "open",
         "createdAt": created_at_iso,
-        "assignees": [a.dict(by_alias=True) for a in body.selectedAssignees]
+        "assignees": [a.dict(by_alias=True) for a in assignees_list]
     }
