@@ -11,16 +11,12 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from firebase_admin import firestore
 from app.integrations.firebase_admin import verify_firebase_token
 from app.schemas.transcripts import TranscriptCreateRequest, TranscriptGenerateRequest
 from app.services.supabase_service import create_transcript, get_transcripts_by_meeting
 from app.services.transcription_service import transcribe_meeting
 
 logger = logging.getLogger(__name__)
-
-def get_firestore_db():
-    return firestore.client()
 
 router = APIRouter(prefix="/api/transcripts", tags=["Transcripts"])
 
@@ -120,8 +116,8 @@ async def generate_transcript_endpoint(
         msg = str(exc)
         if "No recordings found" in msg:
             raise HTTPException(
-                status_code=status.HTTP_202_ACCEPTED,
-                detail="Recording not found yet. Cannot generate transcript.",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Bu toplantı için kayıt bulunamadı. Lütfen önce ses kaydı alın.",
             )
         logger.exception(
             "[Transcripts] Generation failed for meeting=%s", body.meetingId,
@@ -158,8 +154,7 @@ async def generate_transcript_endpoint(
     summary="Get transcripts for a meeting",
     responses={
         401: {"description": "Missing or invalid Firebase ID token"},
-        202: {"description": "Transcript is still being processed"},
-        404: {"description": "No transcripts found"},
+        500: {"description": "Database failure"},
     },
 )
 async def get_transcripts_endpoint(
@@ -181,30 +176,7 @@ async def get_transcripts_endpoint(
         )
 
     if not transcripts:
-        # Check meeting status in Firestore
-        try:
-            db = get_firestore_db()
-            meeting_doc = db.collection("meetings").document(meetingId).get()
-            
-            if meeting_doc.exists:
-                # If meeting exists, return 202 instead of 404
-                raise HTTPException(
-                    status_code=status.HTTP_202_ACCEPTED,
-                    detail="Transcript is still being processed.",
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Meeting not found.",
-                )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.error("[Transcripts] Firestore check failed: %s", exc)
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No transcripts found for this meeting.",
-            )
+        return []
 
     return [
         {

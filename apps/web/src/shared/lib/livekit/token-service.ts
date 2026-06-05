@@ -44,8 +44,9 @@ export async function getLiveKitToken(
 
   const identity = user.uid
   const name = user.displayName || user.email || "Guest"
+  const email = user.email || null
 
-  return fetchTokenFromBackend(meetingId, identity, name, user)
+  return fetchTokenFromBackend(meetingId, identity, name, email, user)
 }
 
 // ── Backend fetch ───────────────────────────────────────────────────────
@@ -57,13 +58,14 @@ export async function getLiveKitToken(
  * POST <TOKEN_ENDPOINT>
  * Authorization: Bearer <firebase-id-token>
  * Content-Type: application/json
- * Body: { "roomName": string, "identity": string, "name": string }
+ * Body: { "roomName": string, "identity": string, "name": string, "email": string }
  * Response: { "token": string }
  */
 async function fetchTokenFromBackend(
   roomName: string,
   identity: string,
   name: string,
+  email: string | null,
   user: User
 ): Promise<string> {
   const idToken = await user.getIdToken()
@@ -74,7 +76,7 @@ async function fetchTokenFromBackend(
       "Content-Type": "application/json",
       "Authorization": `Bearer ${idToken}`,
     },
-    body: JSON.stringify({ roomName, identity, name }),
+    body: JSON.stringify({ roomName, identity, name, email }),
   })
 
   if (!response.ok) {

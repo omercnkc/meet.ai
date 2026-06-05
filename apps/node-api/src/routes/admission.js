@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { RoomServiceClient, AccessToken } from "livekit-server-sdk";
+import { AccessToken } from "livekit-server-sdk";
+import { roomService } from "../services/room-service.js";
 import { addRequest, getRequest, removeRequest } from "../services/admission-store.js";
 import { logInfo, logWarn, logError, logAdmissionEvent } from "../utils/logger.js";
 
@@ -14,29 +15,24 @@ function isRateLimited(userId) {
     rateLimits.set(userId, [now]);
     return false;
   }
-  
+
   const timestamps = rateLimits.get(userId);
-  // Filter out timestamps older than the window
   const validTimestamps = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-  
+
   if (validTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
     rateLimits.set(userId, validTimestamps);
     return true;
   }
-  
+
   validTimestamps.push(now);
   rateLimits.set(userId, validTimestamps);
   return false;
 }
 
-
 const router = Router();
 
-const livekitUrl = process.env.LIVEKIT_URL || "ws://localhost:7880";
 const livekitApiKey = process.env.LIVEKIT_API_KEY || "devkey";
 const livekitApiSecret = process.env.LIVEKIT_API_SECRET || "secret";
-
-const roomService = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret);
 
 router.post("/request", async (req, res) => {
   const { meetingId, userId, userName } = req.body;

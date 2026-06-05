@@ -18,11 +18,11 @@ export default function MeetingSummaryPage() {
   const [meeting, setMeeting] = useState<Meeting | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [transcripts, setTranscripts] = useState<TranscriptRecord[]>([])
-  
+
   const [loadingMeeting, setLoadingMeeting] = useState(true)
   const [loadingTasks, setLoadingTasks] = useState(true)
   const [loadingTranscripts, setLoadingTranscripts] = useState(true)
-  
+
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
 
@@ -166,13 +166,13 @@ export default function MeetingSummaryPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground pt-16">
       <Header />
-      
+
       <main className="flex-1 w-full max-w-7xl mx-auto p-6 md:p-8 space-y-8">
         {/* Top Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="space-y-2">
             <div className="flex items-center gap-3 text-sm text-muted-foreground mb-2">
-              <button 
+              <button
                 onClick={() => navigate("/dashboard")}
                 className="hover:text-foreground transition-colors flex items-center gap-1 font-medium"
               >
@@ -185,11 +185,10 @@ export default function MeetingSummaryPage() {
                 <Video className="w-5 h-5 text-primary" />
               </div>
               <h1 className="text-3xl font-bold tracking-tight">{t('userMeeting', { name: currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', ns: 'summary' })}</h1>
-              <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-                meeting.status === "active" 
-                  ? "bg-green-500/10 text-green-500 border-green-500/20" 
+              <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${meeting.status === "active"
+                  ? "bg-green-500/10 text-green-500 border-green-500/20"
                   : "bg-secondary text-secondary-foreground border-border/50"
-              }`}>
+                }`}>
                 {meeting.status === "active" ? t("active", { ns: "dashboard" }) : t("ended", { ns: "dashboard" })}
               </span>
             </div>
@@ -203,7 +202,7 @@ export default function MeetingSummaryPage() {
               )}
             </p>
           </div>
-          
+
           {meeting.status === "active" && (
             <button
               onClick={() => navigate(`/meeting-room/${meeting.id}`)}
@@ -215,10 +214,10 @@ export default function MeetingSummaryPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
+
           {/* Main Column: Transcript & AI Q&A */}
           <div className="lg:col-span-2 space-y-8">
-            
+
             {/* Transcript Section */}
             <section className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden flex flex-col">
               <div className="p-6 border-b border-border/40 flex items-center justify-between">
@@ -226,7 +225,7 @@ export default function MeetingSummaryPage() {
                   <FileText className="w-5 h-5 text-primary" />
                   <h2 className="text-xl font-semibold">{t('meetingTranscript', { ns: 'summary' })}</h2>
                 </div>
-                {!latestTranscript && (
+                {!hasTranscript && (
                   <button
                     onClick={handleGenerateTranscript}
                     disabled={isGenerating}
@@ -247,7 +246,7 @@ export default function MeetingSummaryPage() {
                     </div>
                   </div>
                 )}
-                
+
                 {loadingTranscripts ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -255,7 +254,7 @@ export default function MeetingSummaryPage() {
                 ) : latestTranscript ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     <p className="whitespace-pre-wrap leading-relaxed text-foreground/90">
-                      {latestTranscript.fullText || "{t('noContentFound', { ns: 'summary' })}"}
+                      {latestTranscript.fullText || t('noContentFound', { ns: 'summary' })}
                     </p>
                   </div>
                 ) : (

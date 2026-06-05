@@ -26,7 +26,7 @@ function getApiBaseUrl(): string {
   if (!tokenEndpoint) {
     throw new Error(
       "Cannot determine backend URL. Set VITE_API_BASE_URL or " +
-        "VITE_LIVEKIT_TOKEN_ENDPOINT."
+      "VITE_LIVEKIT_TOKEN_ENDPOINT."
     )
   }
 

@@ -21,7 +21,18 @@ export function ParticipantTile({ trackRef, isScreenShare = false }: Props) {
   const [isMicMuted, setIsMicMuted] = useState(true)
   const [isSpeaking, setIsSpeaking] = useState(participant.isSpeaking)
 
-  // Attach / detach video track
+  // Sync activeTrack + hasVideo whenever the publication's track object changes.
+  // This is the primary fix: useState(initialTrack) only runs on the first render,
+  // so when useTracks provides a new trackRef after subscription, state wouldn't
+  // update otherwise. The track object itself is a stable reference while subscribed.
+  const liveTrack = publication?.track
+  useEffect(() => {
+    setActiveTrack(liveTrack)
+    setHasVideo(!!liveTrack && !(publication?.isMuted ?? false))
+  }, [liveTrack]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Attach / detach video track whenever activeTrack or hasVideo changes.
+  // hasVideo gates whether the <video> element exists in the DOM.
   useEffect(() => {
     const el = videoRef.current
     if (el && activeTrack) {
@@ -32,19 +43,20 @@ export function ParticipantTile({ trackRef, isScreenShare = false }: Props) {
     }
   }, [activeTrack, hasVideo])
 
-  // Track mic and camera status reactively via participant events
+  // Track mic status and speaking state reactively via participant events.
+  // (activeTrack / hasVideo are handled by the trackRef sync effect above.)
   useEffect(() => {
     const updateStatus = () => {
       const micPub = participant.getTrackPublication(Track.Source.Microphone)
       setIsMicMuted(!micPub?.track || micPub.isMuted)
 
-      const camPub = isScreenShare 
+      const camPub = isScreenShare
         ? participant.getTrackPublication(Track.Source.ScreenShare)
         : participant.getTrackPublication(Track.Source.Camera)
-      
+
       const currentTrack = camPub?.track
       setActiveTrack(currentTrack)
-      setHasVideo(!!currentTrack && !camPub.isMuted)
+      setHasVideo(!!currentTrack && !(camPub?.isMuted ?? false))
     }
 
     const updateSpeaking = (speaking: boolean) => setIsSpeaking(speaking)
@@ -55,6 +67,8 @@ export function ParticipantTile({ trackRef, isScreenShare = false }: Props) {
     participant.on("trackUnmuted", updateStatus)
     participant.on("trackPublished", updateStatus)
     participant.on("trackUnpublished", updateStatus)
+    participant.on("trackSubscribed", updateStatus)
+    participant.on("trackUnsubscribed", updateStatus)
     participant.on("localTrackPublished", updateStatus)
     participant.on("localTrackUnpublished", updateStatus)
     participant.on("isSpeakingChanged", updateSpeaking)
@@ -64,6 +78,8 @@ export function ParticipantTile({ trackRef, isScreenShare = false }: Props) {
       participant.off("trackUnmuted", updateStatus)
       participant.off("trackPublished", updateStatus)
       participant.off("trackUnpublished", updateStatus)
+      participant.off("trackSubscribed", updateStatus)
+      participant.off("trackUnsubscribed", updateStatus)
       participant.off("localTrackPublished", updateStatus)
       participant.off("localTrackUnpublished", updateStatus)
       participant.off("isSpeakingChanged", updateSpeaking)
@@ -85,7 +101,7 @@ export function ParticipantTile({ trackRef, isScreenShare = false }: Props) {
           } transition-opacity duration-300 ${isLocal && !isScreenShare ? "scale-x-[-1]" : ""}`}
           autoPlay
           playsInline
-          muted={isLocal}
+          muted={isLocal || isScreenShare}
         />
       ) : (
         <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-gradient-to-br from-primary/20 to-secondary flex items-center justify-center shadow-inner border border-primary/10">

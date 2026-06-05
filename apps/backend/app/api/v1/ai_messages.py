@@ -194,10 +194,7 @@ async def get_ai_messages_endpoint(
         )
 
     if not messages:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No AI messages found for this meeting.",
-        )
+        return []
 
     return [
         {

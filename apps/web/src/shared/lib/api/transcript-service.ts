@@ -17,7 +17,7 @@ function getApiBaseUrl(): string {
   if (!tokenEndpoint) {
     throw new Error(
       "Cannot determine backend URL. Set VITE_API_BASE_URL or " +
-        "VITE_LIVEKIT_TOKEN_ENDPOINT."
+      "VITE_LIVEKIT_TOKEN_ENDPOINT."
     )
   }
 
@@ -68,7 +68,7 @@ export async function generateTranscript(
     body: JSON.stringify({ meetingId }),
   })
 
-  if (!response.ok) {
+  if (!response.ok || response.status === 202) {
     const data = await response.json().catch(() => ({ detail: "Unknown error" }))
     throw new Error(data.detail || `Transcript generation failed (${response.status})`)
   }
@@ -95,7 +95,7 @@ export async function getTranscripts(
     },
   })
 
-  if (response.status === 404) {
+  if (response.status === 404 || response.status === 202) {
     return [] // No transcripts yet
   }
 

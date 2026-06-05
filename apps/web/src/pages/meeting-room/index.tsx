@@ -15,7 +15,9 @@ import { MeetingControls } from "./components/meeting-controls"
 import { PipContent } from "./components/pip-content"
 import { AdmissionControlListener } from "./components/admission-listener"
 import { GuestAdmissionFlow } from "./components/guest-admission-flow"
+import { HostControlsPanel } from "./components/host-controls-panel"
 import { useMeetingRecorder } from "./hooks/useMeetingRecorder"
+import { useHostControls } from "./hooks/useHostControls"
 import { logInfo, logAdmissionEvent, logError } from "@/shared/lib/logger"
 
 const PIP_SUPPORTED = typeof window !== "undefined" && "documentPictureInPicture" in window
@@ -40,6 +42,8 @@ export default function MeetingRoomPage() {
   const [isOverlayHidden, setIsOverlayHidden] = useState(false)
   const [isPipHiddenForSession, setIsPipHiddenForSession] = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [showHostControls, setShowHostControls] = useState(false)
+  const [isForceMutedByHost, setIsForceMutedByHost] = useState(false)
 
   // ─── Recording ───
   const recorder = useMeetingRecorder(meetingId, currentUser)
@@ -68,7 +72,7 @@ export default function MeetingRoomPage() {
   // ─── LiveKit Token ───
   const isGuest = meeting && currentUser ? (() => {
     // DEVELOPMENT LOG: Check if participantIds exists due to mobile schema sync
-    if (import.meta.env.DEV && meeting.participantIds === undefined) {
+    if (import.meta.env.DEV && (meeting as any).participantIds === undefined) {
       console.warn("Meeting.participantIds is undefined. Schema might have been updated to single userId.");
     }
 
@@ -408,6 +412,18 @@ export default function MeetingRoomPage() {
         />
       )}
 
+      {meeting && (
+        <HostControlsManager
+          meetingId={meetingId!}
+          hostId={(meeting as any).hostId || meeting.userId}
+          currentUserId={currentUser?.uid}
+          isOpen={showHostControls}
+          onClose={() => setShowHostControls(false)}
+          onScreenShareStop={handleStopScreenShare}
+          onForceMuteChange={setIsForceMutedByHost}
+        />
+      )}
+
       {/* Meeting Header */}
       <header className="h-16 border-b border-border/40 bg-card/50 backdrop-blur-md flex items-center justify-between px-6 shrink-0 z-10">
         <div className="flex items-center gap-4">
@@ -440,6 +456,21 @@ export default function MeetingRoomPage() {
                 </span>
               )}
             </div>
+          )}
+
+          {/* Participants panel toggle — host only */}
+          {((meeting as any).hostId || meeting.userId) === currentUser?.uid && (
+            <button
+              onClick={() => setShowHostControls((v) => !v)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md border font-medium transition-colors text-sm ${
+                showHostControls
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-input bg-background hover:bg-accent hover:text-accent-foreground"
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Participants</span>
+            </button>
           )}
 
           <button
@@ -489,6 +520,7 @@ export default function MeetingRoomPage() {
         recordingError={recorder.errorMessage}
         onStartRecording={recorder.startRecording}
         onStopRecording={recorder.stopRecording}
+        isForceMutedByHost={isForceMutedByHost}
       />
 
       {/* Document PiP Portal (External window overlay) */}
@@ -528,6 +560,54 @@ export default function MeetingRoomPage() {
       )}
     </LiveKitRoom>
   )
+}
+
+/**
+ * Always-mounted component that activates the host-control DataChannel listener
+ * and conditionally renders the HostControlsPanel when isOpen.
+ * Must live inside <LiveKitRoom> to use useRoomContext.
+ */
+function HostControlsManager({
+  meetingId,
+  hostId,
+  currentUserId,
+  isOpen,
+  onClose,
+  onScreenShareStop,
+  onForceMuteChange,
+}: {
+  meetingId: string;
+  hostId: string;
+  currentUserId?: string;
+  isOpen: boolean;
+  onClose: () => void;
+  onScreenShareStop: () => void;
+  onForceMuteChange: (v: boolean) => void;
+}) {
+  const { kick, mute, requestUnmute, stopScreenShare, muteAll, isForceMutedByHost } = useHostControls({
+    meetingId,
+    hostId,
+    currentUserId,
+    onScreenShareStop,
+  });
+
+  // Propagate force-mute state up to MeetingRoomPage so MeetingControls can read it
+  useEffect(() => {
+    onForceMuteChange(isForceMutedByHost);
+  }, [isForceMutedByHost, onForceMuteChange]);
+
+  return (
+    <HostControlsPanel
+      isOpen={isOpen}
+      onClose={onClose}
+      currentUserId={currentUserId}
+      kick={kick}
+      mute={mute}
+      requestUnmute={requestUnmute}
+      stopScreenShare={stopScreenShare}
+      muteAll={muteAll}
+    />
+  );
 }
 
 /**

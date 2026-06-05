@@ -38,6 +38,12 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
   const [selectedAssignees, setSelectedAssignees] = useState<Participant[]>([])
   const [showMentionPicker, setShowMentionPicker] = useState(false)
   const [mentionSearchQuery, setMentionSearchQuery] = useState("")
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0)
+
+  // Reset active suggestion index when picker opens or query changes
+  useEffect(() => {
+    setActiveSuggestionIndex(0)
+  }, [showMentionPicker, mentionSearchQuery])
 
   // Chat state
   const [messages, setMessages] = useState<Message[]>([])
@@ -97,9 +103,37 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
     setSelectedAssignees(prev => prev.filter(a => a.identity !== identity))
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showMentionPicker || filteredParticipants.length === 0) return
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setActiveSuggestionIndex((prev) => (prev + 1) % filteredParticipants.length)
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setActiveSuggestionIndex((prev) => (prev - 1 + filteredParticipants.length) % filteredParticipants.length)
+    } else if (e.key === "Tab" || e.key === "Enter") {
+      e.preventDefault()
+      const selectedParticipant = filteredParticipants[activeSuggestionIndex]
+      if (selectedParticipant) {
+        handleSelectAssignee(selectedParticipant)
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      setShowMentionPicker(false)
+    }
+  }
+
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTaskTitle.trim() || !currentUser) return
+
+    // Clean up empty/dangling @ tags at the end of the text
+    let cleanedTitle = newTaskTitle.trim()
+    cleanedTitle = cleanedTitle.replace(/@\w*$/, "").trim()
+
+    // Do not submit if the cleaned title is empty
+    if (!cleanedTitle) return
 
     setIsSubmitting(true)
     try {
@@ -114,7 +148,7 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
         },
         body: JSON.stringify({
           meetingId,
-          title: newTaskTitle.trim(),
+          title: cleanedTitle,
           selectedAssignees: selectedAssignees.map(a => ({
             userId: a.identity,
             name: a.name,
@@ -256,6 +290,7 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={newTaskTitle}
                   onChange={(e) => handleTaskTitleChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
                   disabled={isSubmitting}
                 />
                 <button
@@ -295,15 +330,25 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
                   {filteredParticipants.length === 0 ? (
                     <div className="p-3 text-xs text-muted-foreground text-center italic">No participants found</div>
                   ) : (
-                    filteredParticipants.map(p => (
+                    filteredParticipants.map((p, index) => (
                       <button
                         key={p.identity}
                         type="button"
                         onClick={() => handleSelectAssignee(p)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 border-b border-border/40 last:border-0 text-left"
+                        onMouseEnter={() => setActiveSuggestionIndex(index)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm border-b border-border/40 last:border-0 text-left transition-colors ${
+                          index === activeSuggestionIndex
+                            ? "bg-muted font-medium text-foreground"
+                            : "hover:bg-muted/30 text-foreground"
+                        }`}
                       >
                         <UserCircle className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <span className="text-foreground flex-1">{p.name}</span>
+                        <span className="text-foreground flex-1">
+                          {p.name}
+                          {p.email && p.email !== p.name && (
+                            <span className="text-muted-foreground text-xs ml-1">({p.email})</span>
+                          )}
+                        </span>
                         {p.identity === localParticipant?.identity && (
                           <span className="text-xs text-muted-foreground">(you)</span>
                         )}

@@ -54,6 +54,7 @@ type ParticipantCard = {
   videoTrack: any | null;
   isSpeaking: boolean;
   isMicMuted: boolean;
+  isScreenSharing: boolean;
 };
 
 const requestAndroidPermissions = async (): Promise<boolean> => {
@@ -145,6 +146,10 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
   const [admissionKey, setAdmissionKey] = useState(0);
   const [pendingRequests, setPendingRequests] = useState<Array<{ userId: string; userName: string }>>([]);
   const restrictedRoomRef = useRef<Room | null>(null);
+
+  // Host controls panel
+  const [showHostControls, setShowHostControls] = useState(false);
+  const [isForceMutedByHost, setIsForceMutedByHost] = useState(false);
 
   // ── Meeting subscription ──────────────────────────────────────────────
   useEffect(() => {
@@ -364,19 +369,79 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
           setSpeakingIds(new Set(speakers.map((s) => s.identity)));
         });
 
+        roomInst.on(RoomEvent.Disconnected, () => {
+          if (!alive) return;
+          Alert.alert(
+            "Disconnected",
+            "You have been disconnected from the meeting.",
+            [{ text: "Return to Dashboard", onPress: () => navigation.navigate("Dashboard") }],
+            { cancelable: false }
+          );
+        });
+
         await roomInst.connect(ENV.LIVEKIT_URL || "wss://meet-ai-79lby4wd.livekit.cloud", token);
         if (!alive) { roomInst.disconnect(); return; }
 
-        // Host: listen for guest join requests via DataChannel
+        // DataChannel message dispatcher
         roomInst.on(RoomEvent.DataReceived, (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
-          if (!alive || topic !== "admission") return;
+          if (!alive) return;
           try {
             const msg = JSON.parse(new TextDecoder().decode(payload));
-            if (msg.type === "JOIN_REQUEST") {
+
+            // ── Admission messages (host-side) ──────────────────────────
+            if (topic === "admission" && msg.type === "JOIN_REQUEST") {
               setPendingRequests(prev => {
                 if (prev.find(r => r.userId === msg.payload.userId)) return prev;
                 return [...prev, { userId: msg.payload.userId, userName: msg.payload.userName }];
               });
+              return;
+            }
+
+            // ── Host control messages (all participants) ─────────────────
+            if (topic === "host-control") {
+              const { type, payload: p } = msg;
+
+              if (type === "HOST_KICKED" && p.targetUserId === currentUserId) {
+                alive = false;
+                roomInst?.disconnect();
+                Alert.alert(
+                  "Removed from Meeting",
+                  "The host has removed you from the meeting.",
+                  [{ text: "OK", onPress: () => navigation.navigate("Dashboard") }],
+                  { cancelable: false }
+                );
+                return;
+              }
+
+              if (type === "HOST_MUTED" && (p.targetUserId === currentUserId || p.targetUserId === "*")) {
+                setIsForceMutedByHost(true);
+                Alert.alert("Muted by Host", "The host has muted your microphone. You cannot unmute until the host allows it.");
+                return;
+              }
+
+              if (type === "UNMUTE_REQUESTED" && p.targetUserId === currentUserId) {
+                setIsForceMutedByHost(false);
+                Alert.alert(
+                  "Unmute Request",
+                  "The host is asking you to unmute your microphone.",
+                  [
+                    { text: "Stay Muted", style: "cancel" },
+                    { text: "Unmute", onPress: () => roomInst?.localParticipant.setMicrophoneEnabled(true) },
+                  ]
+                );
+                return;
+              }
+
+              if (type === "SCREEN_SHARE_STOPPED" && p.targetUserId === currentUserId) {
+                roomInst?.localParticipant.setScreenShareEnabled(false);
+                Alert.alert("Screen Share Stopped", "The host has stopped your screen share.");
+                return;
+              }
+
+              if (type === "HOST_TRANSFERRED" && p.newHostId === currentUserId) {
+                Alert.alert("You're Now the Host", "The host role has been transferred to you.");
+                return;
+              }
             }
           } catch {}
         });
@@ -400,6 +465,10 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
   // ── Controls ──────────────────────────────────────────────────────────
   const toggleMic = async () => {
     if (!room) return;
+    if (isForceMutedByHost) {
+      Alert.alert("Muted by Host", "You cannot unmute yourself. Wait for the host to send an unmute request.");
+      return;
+    }
     // State is driven solely by room events (TrackMuted/TrackUnmuted) to prevent double-update race
     try { await room.localParticipant.setMicrophoneEnabled(!isMicEnabled); }
     catch (e) { console.warn("mic toggle failed", e); }
@@ -471,8 +540,72 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     } catch (e) { console.warn("Failed to reject admission", e); }
   };
 
+  // ── Host control actions ──────────────────────────────────────────────
+  const callHostControl = async (endpoint: string, body: object) => {
+    try {
+      const res = await fetch(`${ENV.NODE_API_BASE_URL}/api/host-controls/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, meetingId, callerId: currentUserId, hostId: currentUserId }),
+      });
+      return (await res.json()) as { success: boolean; error?: string; mutedCount?: number };
+    } catch (e) {
+      console.warn(`host-control/${endpoint} failed`, e);
+      return { success: false };
+    }
+  };
+
+  const handleHostKick = (targetUserId: string, targetName: string) => {
+    Alert.alert(
+      "Remove Participant",
+      `Remove ${targetName} from the meeting?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            const res = await callHostControl("kick", { targetUserId });
+            if (!res.success) Alert.alert("Error", "Failed to remove participant.");
+          },
+        },
+      ]
+    );
+  };
+
+  const handleHostMute = async (targetUserId: string) => {
+    await callHostControl("mute", { targetUserId });
+  };
+
+  const handleHostMuteAll = async () => {
+    const res = await callHostControl("mute-all", {});
+    if (res.success) Alert.alert("Done", `Muted ${res.mutedCount ?? 0} participant(s).`);
+    else Alert.alert("Error", "Failed to mute participants.");
+  };
+
+  const handleHostStopScreenShare = (targetUserId: string, targetName: string) => {
+    Alert.alert(
+      "Stop Screen Share",
+      `Stop ${targetName}'s screen share?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Stop",
+          style: "destructive",
+          onPress: async () => {
+            const res = await callHostControl("stop-screenshare", { targetUserId });
+            if (!res.success) Alert.alert("Error", "Failed to stop screen share.");
+          },
+        },
+      ]
+    );
+  };
+
   const handleAddTask = async () => {
-    if (!newTaskTitle.trim()) return;
+    let cleanedTitle = newTaskTitle.trim();
+    cleanedTitle = cleanedTitle.replace(/@\w*$/, "").trim();
+    if (!cleanedTitle) return;
+
     setAddingTask(true);
     try {
       const assigneesToSend = selectedAssignees.map(a => ({
@@ -482,7 +615,7 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
       }));
       await createTask(
         meetingId,
-        newTaskTitle.trim(),
+        cleanedTitle,
         assigneesToSend
       );
       setNewTaskTitle("");
@@ -545,6 +678,8 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
         }
       }
 
+      let isScreenSharingParticipant = false;
+
       if (participantObj) {
         // Check camera track publication
         const camPub = participantObj.getTrackPublication(Track.Source.Camera);
@@ -555,6 +690,9 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
         // Check mic track publication
         const micPub = participantObj.getTrackPublication(Track.Source.Microphone);
         isMicMuted = !micPub || !micPub.track || micPub.isMuted;
+        // Check screen share
+        const screenPub = participantObj.getTrackPublication(Track.Source.ScreenShare);
+        isScreenSharingParticipant = !!(screenPub && screenPub.track && !screenPub.isMuted);
       } else if (camEntry) {
         // Fallback to track status if participantObj not in room map yet
         const pub = camEntry.participant.getTrackPublication(Track.Source.Camera);
@@ -564,14 +702,17 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
         }
         const micPub = camEntry.participant.getTrackPublication(Track.Source.Microphone);
         isMicMuted = !micPub || !micPub.track || micPub.isMuted;
+        const screenPub = camEntry.participant.getTrackPublication(Track.Source.ScreenShare);
+        isScreenSharingParticipant = !!(screenPub && screenPub.track && !screenPub.isMuted);
       }
-      
+
       return {
         key: p.identity,
         name: p.name,
         videoTrack: hasVideo ? videoTrack : null,
         isSpeaking: speakingIds.has(p.identity),
         isMicMuted,
+        isScreenSharing: isScreenSharingParticipant,
       };
     });
   }, [meetingParticipants, videoTracks, speakingIds, room]);
@@ -823,6 +964,87 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
         </Modal>
       )}
 
+      {/* ── Host Controls Modal ── */}
+      {isHost && showHostControls && (
+        <Modal transparent animationType="slide" visible statusBarTranslucent>
+          <View style={styles.hostControlsOverlay}>
+            <SafeAreaView style={[styles.hostControlsPanel, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+              {/* Header */}
+              <View style={[styles.hostControlsHeader, { borderBottomColor: colors.border + "40" }]}>
+                <Text style={[styles.hostControlsTitle, { color: colors.foreground }]}>
+                  Participants ({participantCards.length})
+                </Text>
+                <TouchableOpacity onPress={() => setShowHostControls(false)}>
+                  <Ionicons name="close" size={24} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Mute All */}
+              {participantCards.filter(c => c.key !== currentUserId).length > 0 && (
+                <TouchableOpacity
+                  onPress={handleHostMuteAll}
+                  style={[styles.muteAllBtn, { backgroundColor: colors.secondary, borderColor: colors.border + "60" }]}
+                >
+                  <Ionicons name="mic-off" size={18} color={colors.foreground} />
+                  <Text style={[styles.muteAllBtnText, { color: colors.foreground }]}>Mute All</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Participant list */}
+              <ScrollView>
+                {participantCards.map(card => {
+                  const isMe = card.key === currentUserId;
+                  return (
+                    <View key={card.key} style={[styles.hostParticipantRow, { borderColor: colors.border + "40" }]}>
+                      <View style={[styles.hostParticipantAvatar, { backgroundColor: colors.primary + "20" }]}>
+                        <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 16 }}>
+                          {(card.name || "?").charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={[styles.hostParticipantName, { color: colors.foreground, flex: 1 }]} numberOfLines={1}>
+                          {card.name}{isMe ? " (you)" : ""}
+                        </Text>
+                        {!card.isMicMuted && !isMe && (
+                          <Ionicons name="mic" size={14} color={colors.mutedForeground} />
+                        )}
+                        {card.isScreenSharing && !isMe && (
+                          <Ionicons name="desktop-outline" size={14} color={colors.primary} />
+                        )}
+                      </View>
+                      {!isMe && (
+                        <View style={styles.hostParticipantActions}>
+                          <TouchableOpacity
+                            onPress={() => handleHostMute(card.key)}
+                            style={[styles.hostActionBtn, { backgroundColor: colors.secondary }]}
+                          >
+                            <Ionicons name="mic-off-outline" size={16} color={colors.foreground} />
+                          </TouchableOpacity>
+                          {card.isScreenSharing && (
+                            <TouchableOpacity
+                              onPress={() => handleHostStopScreenShare(card.key, card.name)}
+                              style={[styles.hostActionBtn, { backgroundColor: colors.primary + "20" }]}
+                            >
+                              <Ionicons name="stop-circle-outline" size={16} color={colors.primary} />
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            onPress={() => handleHostKick(card.key, card.name)}
+                            style={[styles.hostActionBtn, { backgroundColor: "#ef444420" }]}
+                          >
+                            <Ionicons name="person-remove-outline" size={16} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </SafeAreaView>
+          </View>
+        </Modal>
+      )}
+
       {/* ── Header ── */}
       <View style={[styles.header, { borderBottomColor: colors.border + "40" }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -911,8 +1133,8 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
             <View style={[styles.controlBar, { backgroundColor: colors.card, borderColor: colors.border + "30", paddingHorizontal: barPad, gap: barGap }]}>
 
               <TouchableOpacity onPress={toggleMic}
-                style={[styles.roundBtn, { width: btnSize, height: btnSize, borderRadius: btnRadius }, isMicEnabled ? { backgroundColor: colors.secondary } : { backgroundColor: colors.destructive }]}>
-                <Ionicons name={isMicEnabled ? "mic" : "mic-off"} size={iconSize} color={isMicEnabled ? colors.foreground : "#fff"} />
+                style={[styles.roundBtn, { width: btnSize, height: btnSize, borderRadius: btnRadius }, isForceMutedByHost ? { backgroundColor: "#7f1d1d" } : isMicEnabled ? { backgroundColor: colors.secondary } : { backgroundColor: colors.destructive }]}>
+                <Ionicons name={isForceMutedByHost ? "lock-closed" : isMicEnabled ? "mic" : "mic-off"} size={iconSize} color={isForceMutedByHost || !isMicEnabled ? "#fff" : colors.foreground} />
               </TouchableOpacity>
 
               <TouchableOpacity onPress={toggleCamera}
@@ -952,6 +1174,16 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
                   <><View style={[styles.recDotBtn, { backgroundColor: colors.destructive }]} />{!isCompact && <Text style={[styles.wideBtnText, { color: colors.foreground }]}>Record</Text>}</>
                 )}
               </TouchableOpacity>
+
+              {/* Host: Participants panel button */}
+              {isHost && (
+                <TouchableOpacity
+                  onPress={() => setShowHostControls(true)}
+                  style={[styles.roundBtn, { width: btnSize, height: btnSize, borderRadius: btnRadius, backgroundColor: colors.secondary }]}
+                >
+                  <Ionicons name="people" size={iconSize} color={colors.foreground} />
+                </TouchableOpacity>
+              )}
 
               <View style={[styles.divider, { backgroundColor: colors.border + "60" }]} />
 
@@ -1021,7 +1253,9 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
                           onPress={() => handleSelectAssignee(p)}
                         >
                           <Ionicons name="person-outline" size={16} color={colors.mutedForeground} />
-                          <Text style={[styles.mentionName, { color: colors.foreground }]}>{p.name}</Text>
+                          <Text style={[styles.mentionName, { color: colors.foreground }]}>
+                            {p.name} {p.email && p.email !== p.name ? `(${p.email})` : ""}
+                          </Text>
                           {p.identity === currentUserId && (
                             <Text style={[styles.mentionYou, { color: colors.mutedForeground }]}>(you)</Text>
                           )}
@@ -1269,6 +1503,19 @@ const styles = StyleSheet.create({
   chatContent: { paddingVertical: spacing.lg },
   chatInputRow: { flexDirection: "row", alignItems: "flex-end", padding: spacing.md, borderTopWidth: 1, gap: spacing.md },
   chatInput: { flex: 1, minHeight: 40, maxHeight: 100, borderRadius: borderRadius.xl, paddingHorizontal: spacing.xl, paddingVertical: spacing.sm, fontSize: 14 },
+
+  // Host controls modal
+  hostControlsOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" },
+  hostControlsPanel: { borderTopWidth: 1, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "75%", shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 12 },
+  hostControlsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1 },
+  hostControlsTitle: { fontSize: 17, fontWeight: "700" },
+  muteAllBtn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, margin: spacing.md, padding: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1 },
+  muteAllBtnText: { fontSize: 14, fontWeight: "600" },
+  hostParticipantRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1, gap: spacing.md },
+  hostParticipantAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", shrink: 0 } as any,
+  hostParticipantName: { flex: 1, fontSize: 15, fontWeight: "500" },
+  hostParticipantActions: { flexDirection: "row", gap: spacing.sm },
+  hostActionBtn: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
 
   // Guest admission screens
   admissionCenterView: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.xl, gap: spacing.md },

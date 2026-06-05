@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useRoomContext } from "@livekit/components-react"
-import { Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff, Loader2 } from "lucide-react"
+import { Mic, MicOff, Video, VideoOff, MonitorUp, PhoneOff, Loader2, Lock } from "lucide-react"
+import { toast } from "sonner"
 
 import { CircleDot, Square, CheckCircle2, AlertCircle } from "lucide-react"
 import type { RecordingState } from "../hooks/useMeetingRecorder"
@@ -21,6 +22,8 @@ type Props = {
   onStartRecording: () => void
   /** Stop recording callback */
   onStopRecording: () => void
+  /** Mic is locked by host — participant cannot unmute themselves */
+  isForceMutedByHost?: boolean
 }
 
 /** Format seconds as mm:ss */
@@ -40,6 +43,7 @@ export function MeetingControls({
   recordingError,
   onStartRecording,
   onStopRecording,
+  isForceMutedByHost = false,
 }: Props) {
   const room = useRoomContext()
   const localParticipant = room.localParticipant
@@ -73,6 +77,10 @@ export function MeetingControls({
   }, [localParticipant])
 
   const toggleMic = () => {
+    if (isForceMutedByHost) {
+      toast.warning("Your microphone is muted by the host. Wait for them to send an unmute request.");
+      return;
+    }
     if (localParticipant) {
       localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
     }
@@ -198,13 +206,17 @@ export function MeetingControls({
       <button
         onClick={toggleMic}
         className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors shadow-sm ${
-          isMicrophoneEnabled
-            ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-            : "bg-red-500 text-white hover:bg-red-600"
+          isForceMutedByHost
+            ? "bg-red-900 text-white cursor-not-allowed"
+            : isMicrophoneEnabled
+              ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              : "bg-red-500 text-white hover:bg-red-600"
         }`}
-        title={isMicrophoneEnabled ? "Mute" : "Unmute"}
+        title={isForceMutedByHost ? "Muted by host — waiting for unmute permission" : (isMicrophoneEnabled ? "Mute" : "Unmute")}
       >
-        {isMicrophoneEnabled ? (
+        {isForceMutedByHost ? (
+          <Lock className="w-4 h-4" />
+        ) : isMicrophoneEnabled ? (
           <Mic className="w-5 h-5" />
         ) : (
           <MicOff className="w-5 h-5" />

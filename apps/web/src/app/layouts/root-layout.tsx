@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { Toaster } from "sonner"
 import { AuthProvider } from "../providers/auth-provider"
 import { ThemeProvider } from "../providers/theme-provider"
 import { useTranslation } from "react-i18next"
@@ -15,6 +16,7 @@ export function RootLayout({ children }: { children: React.ReactNode }) {
     <ThemeProvider defaultTheme="dark" storageKey="meet-ui-theme">
       <AuthProvider>
         {children}
+        <Toaster position="top-right" richColors closeButton />
       </AuthProvider>
     </ThemeProvider>
   )

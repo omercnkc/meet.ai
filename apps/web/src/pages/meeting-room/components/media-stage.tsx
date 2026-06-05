@@ -22,7 +22,7 @@ export function MediaStage() {
 
   const allScreenShareTracks = useTracks(
     [{ source: Track.Source.ScreenShare, withPlaceholder: false }],
-    { onlySubscribed: false }
+    { onlySubscribed: true }
   )
   const screenShareTracks = allScreenShareTracks.filter(
     (ref) => !isWaitingParticipant(ref.participant)
