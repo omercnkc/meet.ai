@@ -3,7 +3,7 @@
  * completely avoiding @livekit/components-react hooks to prevent React context conflicts in monorepos.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -45,8 +45,16 @@ import { getLiveKitToken } from "../services/livekit";
 import { ENV } from "../config/env";
 
 const VIDEO_GAP = 4;
-const MAX_PARTICIPANTS = 6;
+const ITEMS_PER_PAGE = 4;
 const MEETING_MAX_MS = 60 * 60 * 1000; // 1 hour hard limit
+
+type ParticipantCard = {
+  key: string;
+  name: string;
+  videoTrack: any | null;
+  isSpeaking: boolean;
+  isMicMuted: boolean;
+};
 
 const requestAndroidPermissions = async (): Promise<boolean> => {
   if (Platform.OS !== "android") return true;
@@ -127,6 +135,8 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
 
   // Video stage measured size
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
+  const [currentPage, setCurrentPage] = useState(0);
+  const pagerRef = useRef<FlatList<ParticipantCard[]>>(null);
 
   const currentUserId = currentUser?.uid ?? (currentUser as any)?.userId;
 
@@ -390,13 +400,15 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
   // ── Controls ──────────────────────────────────────────────────────────
   const toggleMic = async () => {
     if (!room) return;
-    try { await room.localParticipant.setMicrophoneEnabled(!isMicEnabled); setIsMicEnabled((v) => !v); }
+    // State is driven solely by room events (TrackMuted/TrackUnmuted) to prevent double-update race
+    try { await room.localParticipant.setMicrophoneEnabled(!isMicEnabled); }
     catch (e) { console.warn("mic toggle failed", e); }
   };
 
   const toggleCamera = async () => {
     if (!room) return;
-    try { await room.localParticipant.setCameraEnabled(!isCameraEnabled); setIsCameraEnabled((v) => !v); }
+    // State is driven solely by room events to prevent double-update race
+    try { await room.localParticipant.setCameraEnabled(!isCameraEnabled); }
     catch (e) { console.warn("camera toggle failed", e); }
   };
 
@@ -513,6 +525,66 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     setSelectedAssignees((prev) => prev.filter((a) => a.identity !== identity));
   };
 
+  // ── Participant cards (all users, with or without camera) ─────────────
+  const participantCards = useMemo<ParticipantCard[]>(() => {
+    return meetingParticipants.map(p => {
+      const camEntry = videoTracks.find(
+        v => v.participant.identity === p.identity && v.source === Track.Source.Camera
+      );
+      
+      let hasVideo = false;
+      let videoTrack = null;
+      let isMicMuted = true;
+      let participantObj = null;
+
+      if (room) {
+        if (room.localParticipant.identity === p.identity) {
+          participantObj = room.localParticipant;
+        } else {
+          participantObj = room.remoteParticipants.get(p.identity);
+        }
+      }
+
+      if (participantObj) {
+        // Check camera track publication
+        const camPub = participantObj.getTrackPublication(Track.Source.Camera);
+        if (camPub && camPub.track && !camPub.isMuted) {
+          hasVideo = true;
+          videoTrack = camPub.track;
+        }
+        // Check mic track publication
+        const micPub = participantObj.getTrackPublication(Track.Source.Microphone);
+        isMicMuted = !micPub || !micPub.track || micPub.isMuted;
+      } else if (camEntry) {
+        // Fallback to track status if participantObj not in room map yet
+        const pub = camEntry.participant.getTrackPublication(Track.Source.Camera);
+        if (pub && pub.track && !pub.isMuted) {
+          hasVideo = true;
+          videoTrack = pub.track;
+        }
+        const micPub = camEntry.participant.getTrackPublication(Track.Source.Microphone);
+        isMicMuted = !micPub || !micPub.track || micPub.isMuted;
+      }
+      
+      return {
+        key: p.identity,
+        name: p.name,
+        videoTrack: hasVideo ? videoTrack : null,
+        isSpeaking: speakingIds.has(p.identity),
+        isMicMuted,
+      };
+    });
+  }, [meetingParticipants, videoTracks, speakingIds, room]);
+
+  const pages = useMemo<ParticipantCard[][]>(() => {
+    if (participantCards.length === 0) return [];
+    const result: ParticipantCard[][] = [];
+    for (let i = 0; i < participantCards.length; i += ITEMS_PER_PAGE) {
+      result.push(participantCards.slice(i, i + ITEMS_PER_PAGE));
+    }
+    return result;
+  }, [participantCards]);
+
   const handleSendChat = async () => {
     if (!chatText.trim() || !currentUser) return;
     const uid = currentUser.uid ?? (currentUser as any).userId;
@@ -523,59 +595,120 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
     } catch (err) { console.error("sendMessage failed", err); }
   };
 
-  // ── Responsive video grid ─────────────────────────────────────────────
+  // ── Paginated video grid (max 4 per page, swipe between pages) ────────
   const renderVideoGrid = useCallback(() => {
     const { w, h } = stageSize;
-    if (!w || !h || !videoTracks.length) return null;
+    if (!w || !h || pages.length === 0) return null;
 
-    const limited = videoTracks.slice(0, MAX_PARTICIPANTS);
-    const { cols, cellW, cellH } = computeGrid(limited.length, w, h);
+    const renderCard = (item: ParticipantCard, cardW: number, cardH: number) => {
+      const isLocal = room && room.localParticipant.identity === item.key;
+      return (
+        <View
+          key={item.key}
+          style={{
+            width: cardW,
+            height: cardH,
+            borderRadius: borderRadius["2xl"],
+            padding: item.isSpeaking ? 3 : 0,
+            backgroundColor: item.isSpeaking ? "#22c55e" : "transparent",
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              borderRadius: borderRadius["2xl"] - (item.isSpeaking ? 3 : 0),
+              overflow: "hidden",
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            {item.videoTrack ? (
+              <VideoView videoTrack={item.videoTrack} style={styles.videoStream} />
+            ) : (
+              <View style={[styles.participantPlaceholder, { backgroundColor: colors.card }]}>
+                <View style={[styles.initialsCircle, { backgroundColor: colors.secondary }]}>
+                  <Text style={[styles.initialsText, { color: colors.foreground }]}>
+                    {(item.name || "?").charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+            )}
 
-    const rowGroups: any[][] = [];
-    for (let i = 0; i < limited.length; i += cols) rowGroups.push(limited.slice(i, i + cols));
+            {/* Mic muted indicator (Top-Right) */}
+            {item.isMicMuted && (
+              <View style={[styles.micMutedBadge, { backgroundColor: "#ef4444" }]}>
+                <Ionicons name="mic-off" size={12} color="#fff" />
+              </View>
+            )}
+
+            {/* Name badge (Bottom-Left) */}
+            <View style={[styles.nameBadge, { backgroundColor: colors.background + "D9", borderColor: colors.border }]}>
+              {item.isSpeaking && <View style={styles.speakDot} />}
+              <Text style={[styles.nameBadgeText, { color: colors.foreground }]} numberOfLines={1}>
+                {item.name} {isLocal && ` (${t("you") || "You"})`}
+              </Text>
+            </View>
+          </View>
+        </View>
+      );
+    };
+
+    const renderPage = ({ item: pageItems }: { item: ParticipantCard[] }) => {
+      const count = pageItems.length;
+      if (count === 0) return <View style={{ width: w, height: h }} />;
+      const cols = count <= 1 ? 1 : 2;
+      const rows = Math.ceil(count / cols);
+      const cellW = Math.floor(cols > 1 ? (w - VIDEO_GAP * (cols - 1)) / cols : w);
+      const cellH = Math.floor(rows > 1 ? (h - VIDEO_GAP * (rows - 1)) / rows : h);
+      const rowGroups: ParticipantCard[][] = [];
+      for (let i = 0; i < count; i += cols) rowGroups.push(pageItems.slice(i, i + cols));
+      return (
+        <View style={{ width: w, height: h }}>
+          {rowGroups.map((row, ri) => (
+            <View key={ri} style={{ flexDirection: "row", gap: VIDEO_GAP, marginBottom: ri < rowGroups.length - 1 ? VIDEO_GAP : 0 }}>
+              {row.map(item => renderCard(item, cellW, cellH))}
+              {row.length < cols && <View style={{ width: cellW, height: cellH }} />}
+            </View>
+          ))}
+        </View>
+      );
+    };
 
     return (
-      <View style={{ flex: 1 }}>
-        {rowGroups.map((row, ri) => (
-          <View
-            key={ri}
-            style={{ flexDirection: "row", gap: VIDEO_GAP, marginBottom: ri < rowGroups.length - 1 ? VIDEO_GAP : 0 }}
-          >
-            {row.map((item) => {
-              const isSpeaking = speakingIds.has(item.participant.identity);
-              const displayName = item.participant.name || item.participant.identity || "Participant";
-              return (
-                // Speaking: green padding acts as border (overflow:hidden would clip borderWidth)
-                <View
-                  key={item.sid}
-                  style={{
-                    width: cellW,
-                    height: cellH,
-                    borderRadius: borderRadius.lg,
-                    padding: isSpeaking ? 2 : 0,
-                    backgroundColor: isSpeaking ? "#22c55e" : "transparent",
-                  }}
-                >
-                  <View style={{ flex: 1, borderRadius: borderRadius.lg, overflow: "hidden" }}>
-                    <VideoView videoTrack={item.track} style={styles.videoStream} />
-                    {/* Participant name tag */}
-                    <View style={styles.nameTag}>
-                      {isSpeaking && <View style={styles.speakDot} />}
-                      <Text style={styles.nameTagText} numberOfLines={1}>
-                        {displayName}
-                        {item.source === Track.Source.ScreenShare ? " (Screen)" : ""}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-            {row.length < cols && <View style={{ width: cellW, height: cellH }} />}
+      <>
+        <FlatList
+          ref={pagerRef}
+          horizontal
+          pagingEnabled
+          scrollEnabled={pages.length > 1}
+          showsHorizontalScrollIndicator={false}
+          data={pages}
+          keyExtractor={(_, i) => `page-${i}`}
+          renderItem={renderPage}
+          getItemLayout={(_, index) => ({ length: w, offset: w * index, index })}
+          onMomentumScrollEnd={(e) => {
+            const page = Math.round(e.nativeEvent.contentOffset.x / w);
+            setCurrentPage(page);
+          }}
+          style={{ width: w, height: h }}
+        />
+        {pages.length > 1 && (
+          <View style={styles.paginationDots} pointerEvents="none">
+            {pages.map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  { backgroundColor: i === currentPage ? "#fff" : "rgba(255,255,255,0.4)" },
+                ]}
+              />
+            ))}
           </View>
-        ))}
-      </View>
+        )}
+      </>
     );
-  }, [stageSize, videoTracks, speakingIds]);
+  }, [stageSize, pages, currentPage, colors, room, t]);
 
   // ── Guest admission screens ───────────────────────────────────────────
   if (admissionPhase === "guest-requesting") {
@@ -746,12 +879,12 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
               style={styles.videoStage}
               onLayout={(e) => setStageSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
             >
-              {videoTracks.length === 0 ? (
+              {pages.length === 0 ? (
                 <View style={[styles.placeholder, { backgroundColor: colors.secondary }]}>
-                  <Ionicons name="videocam-off-outline" size={48} color={colors.mutedForeground} />
-                  <Text style={[styles.placeholderTitle, { color: colors.mutedForeground }]}>No active cameras</Text>
+                  <Ionicons name="people-outline" size={48} color={colors.mutedForeground} />
+                  <Text style={[styles.placeholderTitle, { color: colors.mutedForeground }]}>No one here yet</Text>
                   <Text style={[styles.placeholderSub, { color: colors.mutedForeground }]}>
-                    Turn on your camera or wait for others to join.
+                    Waiting for participants to join.
                   </Text>
                 </View>
               ) : (
@@ -982,26 +1115,94 @@ const styles = StyleSheet.create({
   videoStage: { flex: 1, position: "relative" },
   videoStream: { width: "100%", height: "100%" },
 
-  // Participant name tag
-  nameTag: {
+  // Participant name tag (web-like design)
+  nameBadge: {
     position: "absolute",
-    bottom: 8,
-    left: 8,
+    bottom: 12,
+    left: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: borderRadius.sm,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
     maxWidth: "85%",
   },
-  nameTagText: { color: "#fff", fontSize: 12, fontWeight: "600", flexShrink: 1 },
+  nameBadgeText: { fontSize: 12, fontWeight: "600" },
   speakDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#22c55e" },
+
+  // Mic muted indicator badge (top-right)
+  micMutedBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+  },
 
   placeholder: { flex: 1, borderRadius: borderRadius.xl, alignItems: "center", justifyContent: "center", padding: spacing.xl },
   placeholderTitle: { ...typography.h3, marginTop: spacing.md },
   placeholderSub: { ...typography.bodySmall, textAlign: "center", marginTop: 4 },
+
+  // Camera-off placeholder card (web-like design)
+  participantPlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  initialsCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  initialsText: {
+    fontSize: 28,
+    fontWeight: "700",
+  },
+  placeholderParticipantName: {
+    fontSize: 13,
+    fontWeight: "600",
+    maxWidth: "80%",
+    textAlign: "center",
+  },
+
+  // Pagination dots
+  paginationDots: {
+    position: "absolute",
+    bottom: 36,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
 
   // Recording overlay
   recOverlay: { position: "absolute", top: 8, left: 8, zIndex: 10 },
