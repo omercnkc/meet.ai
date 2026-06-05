@@ -236,8 +236,17 @@ export default function MeetingRoomPage() {
   }, [handleStopScreenShare])
 
 
-  const handleShareInvite = () => {
-    navigator.clipboard.writeText(window.location.href)
+  const handleShareInvite = async () => {
+    const text = `Join my meeting on meet.ai!\n\nMeeting ID: ${meetingId}`
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Join Meeting", text })
+      } catch {
+        navigator.clipboard.writeText(text)
+      }
+    } else {
+      navigator.clipboard.writeText(text)
+    }
     setInviteCopied(true)
     setTimeout(() => setInviteCopied(false), 2000)
   }

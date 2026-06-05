@@ -1,15 +1,43 @@
 import { useState, useEffect, useRef } from "react"
-import { subscribeToTasks, createTask, updateTaskStatus, Task } from "@/shared/lib/firebase/services/tasks"
+import { useLocalParticipant, useRemoteParticipants } from "@livekit/components-react"
+import { subscribeToTasks, updateTaskStatus, Task } from "@/shared/lib/firebase/services/tasks"
 import { subscribeToMessages, sendMessage, Message } from "@/shared/lib/firebase/services/messages"
 import { useAuth } from "@/app/providers/auth-provider"
-import { ListTodo, MessageSquare, Plus, CheckCircle2, Circle, Send } from "lucide-react"
+import { ListTodo, MessageSquare, Plus, CheckCircle2, Circle, Send, UserCircle, X } from "lucide-react"
+
+type Participant = { identity: string; name: string; email: string | null }
+
+function getApiBaseUrl(): string {
+  const url = import.meta.env.VITE_API_BASE_URL
+  if (url) return url.replace(/\/+$/, "")
+  const endpoint: string = import.meta.env.VITE_LIVEKIT_TOKEN_ENDPOINT || ""
+  try {
+    return new URL(endpoint).origin
+  } catch {
+    const idx = endpoint.indexOf("/api")
+    return idx > 0 ? endpoint.slice(0, idx) : endpoint
+  }
+}
+
+function getEmailFromMetadata(meta?: string): string | null {
+  if (!meta) return null
+  try { return JSON.parse(meta)?.email || null } catch { return null }
+}
 
 export function TaskPanel({ meetingId }: { meetingId: string }) {
   const { currentUser } = useAuth()
+  const { localParticipant } = useLocalParticipant()
+  const remoteParticipants = useRemoteParticipants()
+
   const [tasks, setTasks] = useState<Task[]>([])
   const [newTaskTitle, setNewTaskTitle] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState<"tasks" | "chat">("tasks")
+
+  // Assignee @mention state
+  const [selectedAssignees, setSelectedAssignees] = useState<Participant[]>([])
+  const [showMentionPicker, setShowMentionPicker] = useState(false)
+  const [mentionSearchQuery, setMentionSearchQuery] = useState("")
 
   // Chat state
   const [messages, setMessages] = useState<Message[]>([])
@@ -17,10 +45,21 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  // Build participants list from LiveKit room
+  const meetingParticipants: Participant[] = [
+    ...(localParticipant
+      ? [{ identity: localParticipant.identity, name: localParticipant.name || localParticipant.identity, email: currentUser?.email || null }]
+      : []),
+    ...remoteParticipants.map(p => ({
+      identity: p.identity,
+      name: p.name || p.identity,
+      email: getEmailFromMetadata(p.metadata),
+    })),
+  ]
+
   useEffect(() => {
     const unsubscribeTasks = subscribeToTasks(meetingId, (data) => setTasks(data))
     const unsubscribeMessages = subscribeToMessages(meetingId, (data) => setMessages(data))
-    
     return () => {
       unsubscribeTasks()
       unsubscribeMessages()
@@ -34,14 +73,63 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
     }
   }, [messages])
 
+  const handleTaskTitleChange = (value: string) => {
+    setNewTaskTitle(value)
+    const match = value.match(/@(\w*)$/)
+    if (match) {
+      setShowMentionPicker(true)
+      setMentionSearchQuery(match[1])
+    } else {
+      setShowMentionPicker(false)
+      setMentionSearchQuery("")
+    }
+  }
+
+  const handleSelectAssignee = (p: Participant) => {
+    if (selectedAssignees.some(a => a.identity === p.identity)) return
+    setSelectedAssignees(prev => [...prev, p])
+    setNewTaskTitle(prev => prev.replace(/@\w*$/, `@${p.name} `))
+    setShowMentionPicker(false)
+    setMentionSearchQuery("")
+  }
+
+  const handleRemoveAssignee = (identity: string) => {
+    setSelectedAssignees(prev => prev.filter(a => a.identity !== identity))
+  }
+
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTaskTitle.trim() || !currentUser) return
 
     setIsSubmitting(true)
     try {
-      await createTask(meetingId, newTaskTitle.trim(), currentUser.uid)
+      const idToken = await currentUser.getIdToken()
+      const baseUrl = getApiBaseUrl()
+
+      const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          meetingId,
+          title: newTaskTitle.trim(),
+          selectedAssignees: selectedAssignees.map(a => ({
+            userId: a.identity,
+            name: a.name,
+            email: a.email,
+          })),
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.detail || `Failed to create task (${response.status})`)
+      }
+
       setNewTaskTitle("")
+      setSelectedAssignees([])
     } catch (error) {
       console.error("Failed to add task", error)
     } finally {
@@ -73,10 +161,23 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
     }
   }
 
+  const getAssigneeLabel = (task: Task): string | null => {
+    if (task.assignees && task.assignees.length > 0) {
+      return task.assignees.map(a => a.userId === currentUser?.uid ? "You" : a.name).join(", ")
+    }
+    if (task.assignedToName) return task.assignedToUserId === currentUser?.uid ? "You" : task.assignedToName
+    if (task.assignedToUserId) return task.assignedToUserId === currentUser?.uid ? "You" : task.assignedToUserId
+    return null
+  }
+
+  const filteredParticipants = meetingParticipants.filter(p =>
+    p.name.toLowerCase().includes(mentionSearchQuery.toLowerCase())
+  )
+
   return (
     <aside className="w-80 border-l border-border/40 bg-card hidden lg:flex flex-col shrink-0">
       <div className="flex border-b border-border/40 shrink-0">
-        <button 
+        <button
           onClick={() => setActiveTab("tasks")}
           className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
             activeTab === "tasks" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:bg-muted/50"
@@ -86,7 +187,7 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
             <ListTodo className="w-4 h-4" /> Tasks
           </div>
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("chat")}
           className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
             activeTab === "chat" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:bg-muted/50"
@@ -97,7 +198,7 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
           </div>
         </button>
       </div>
-      
+
       {activeTab === "tasks" ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Task List */}
@@ -109,56 +210,108 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
                 <p className="text-sm text-muted-foreground mt-1">Add tasks manually, or AI will extract them automatically.</p>
               </div>
             ) : (
-              tasks.map(task => (
-                <div 
-                  key={task.id} 
-                  className={`flex gap-3 p-3 rounded-lg border transition-colors ${
-                    task.status === "done" ? "bg-muted/30 border-transparent opacity-60" : "bg-card border-border/60 shadow-sm"
-                  }`}
-                >
-                  <button 
-                    onClick={() => toggleTaskStatus(task)}
-                    className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors focus:outline-none"
+              tasks.map(task => {
+                const assigneeLabel = getAssigneeLabel(task)
+                return (
+                  <div
+                    key={task.id}
+                    className={`flex gap-3 p-3 rounded-lg border transition-colors ${
+                      task.status === "done" ? "bg-muted/30 border-transparent opacity-60" : "bg-card border-border/60 shadow-sm"
+                    }`}
                   >
-                    {task.status === "done" ? (
-                      <CheckCircle2 className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <Circle className="w-5 h-5" />
-                    )}
-                  </button>
-                  <div className="flex-1 space-y-1">
-                    <p className={`text-sm font-medium ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}>
-                      {task.title}
-                    </p>
-                    {task.assignedToUserId && (
-                      <p className="text-xs text-muted-foreground">
-                        Assigned to: {task.assignedToUserId === currentUser?.uid ? "You" : task.assignedToUserId}
+                    <button
+                      onClick={() => toggleTaskStatus(task)}
+                      className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors focus:outline-none"
+                    >
+                      {task.status === "done" ? (
+                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                      ) : (
+                        <Circle className="w-5 h-5" />
+                      )}
+                    </button>
+                    <div className="flex-1 space-y-1">
+                      <p className={`text-sm font-medium ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}>
+                        {task.title}
                       </p>
-                    )}
+                      {assigneeLabel && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <UserCircle className="w-3 h-3" />
+                          {assigneeLabel}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
 
           {/* Add Task Input */}
           <div className="p-4 border-t border-border/40 shrink-0 bg-background/50">
-            <form onSubmit={handleAddTask} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Add a task..."
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                disabled={isSubmitting}
-              />
-              <button 
-                type="submit" 
-                disabled={!newTaskTitle.trim() || isSubmitting}
-                className="h-9 w-9 shrink-0 flex items-center justify-center rounded-md bg-primary text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+            <form onSubmit={handleAddTask} className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Add a task... (type @ to assign)"
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  value={newTaskTitle}
+                  onChange={(e) => handleTaskTitleChange(e.target.value)}
+                  disabled={isSubmitting}
+                />
+                <button
+                  type="submit"
+                  disabled={!newTaskTitle.trim() || isSubmitting}
+                  className="h-9 w-9 shrink-0 flex items-center justify-center rounded-md bg-primary text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Selected Assignee Chips */}
+              {selectedAssignees.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedAssignees.map(assignee => (
+                    <span
+                      key={assignee.identity}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/30"
+                    >
+                      <UserCircle className="w-3 h-3" />
+                      {assignee.name}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAssignee(assignee.identity)}
+                        className="ml-0.5 hover:opacity-60 focus:outline-none"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* @mention Picker */}
+              {showMentionPicker && (
+                <div className="border border-border rounded-lg max-h-40 overflow-y-auto bg-card shadow-sm">
+                  {filteredParticipants.length === 0 ? (
+                    <div className="p-3 text-xs text-muted-foreground text-center italic">No participants found</div>
+                  ) : (
+                    filteredParticipants.map(p => (
+                      <button
+                        key={p.identity}
+                        type="button"
+                        onClick={() => handleSelectAssignee(p)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 border-b border-border/40 last:border-0 text-left"
+                      >
+                        <UserCircle className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="text-foreground flex-1">{p.name}</span>
+                        {p.identity === localParticipant?.identity && (
+                          <span className="text-xs text-muted-foreground">(you)</span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </form>
           </div>
         </div>
@@ -181,8 +334,8 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
                       {isMe ? "You" : msg.senderName}
                     </span>
                     <div className={`px-3 py-2 rounded-2xl max-w-[85%] text-sm ${
-                      isMe 
-                        ? "bg-primary text-primary-foreground rounded-br-sm" 
+                      isMe
+                        ? "bg-primary text-primary-foreground rounded-br-sm"
                         : "bg-muted text-foreground rounded-bl-sm"
                     }`}>
                       {msg.text}
@@ -205,8 +358,8 @@ export function TaskPanel({ meetingId }: { meetingId: string }) {
                 onChange={(e) => setNewMessageText(e.target.value)}
                 disabled={isSendingMessage}
               />
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={!newMessageText.trim() || isSendingMessage}
                 className="h-9 w-9 shrink-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
               >

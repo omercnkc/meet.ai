@@ -3,15 +3,29 @@ import { Track } from "livekit-client"
 import { ParticipantTile } from "./participant-tile"
 import { MonitorUp } from "lucide-react"
 
+function isWaitingParticipant(participant: any): boolean {
+  try {
+    return JSON.parse(participant?.metadata || "{}").waiting === true
+  } catch {
+    return false
+  }
+}
+
 export function MediaStage() {
-  const cameraTracks = useTracks(
+  const allCameraTracks = useTracks(
     [{ source: Track.Source.Camera, withPlaceholder: true }],
     { onlySubscribed: false }
   )
+  const cameraTracks = allCameraTracks.filter(
+    (ref) => !isWaitingParticipant(ref.participant)
+  )
 
-  const screenShareTracks = useTracks(
+  const allScreenShareTracks = useTracks(
     [{ source: Track.Source.ScreenShare, withPlaceholder: false }],
     { onlySubscribed: false }
+  )
+  const screenShareTracks = allScreenShareTracks.filter(
+    (ref) => !isWaitingParticipant(ref.participant)
   )
 
   const hasScreenShare = screenShareTracks.length > 0

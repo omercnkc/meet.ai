@@ -68,8 +68,8 @@ export default function DashboardPage() {
   }
 
   const handleCopyInviteLink = (meetingId: string) => {
-    const link = `${window.location.origin}/meeting-room/${meetingId}`
-    navigator.clipboard.writeText(link)
+    const text = `Join my meeting on meet.ai!\n\nMeeting ID: ${meetingId}`
+    navigator.clipboard.writeText(text)
     setCopiedId(meetingId)
     setTimeout(() => setCopiedId(null), 2000)
   }

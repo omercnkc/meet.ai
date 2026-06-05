@@ -132,6 +132,7 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
 
   // Admission flow
   const [admissionPhase, setAdmissionPhase] = useState<AdmissionPhase>("loading");
+  const [admissionKey, setAdmissionKey] = useState(0);
   const [pendingRequests, setPendingRequests] = useState<Array<{ userId: string; userName: string }>>([]);
   const restrictedRoomRef = useRef<Room | null>(null);
 
@@ -159,12 +160,17 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (!meeting || !currentUser || admissionPhase !== "loading") return;
     const hostId = meeting?.hostId || meeting?.userId;
-    setAdmissionPhase(hostId === currentUserId ? "connecting" : "guest-requesting");
+    if (hostId === currentUserId) {
+      setAdmissionPhase("connecting");
+    } else {
+      setAdmissionPhase("guest-requesting");
+      setAdmissionKey(k => k + 1);
+    }
   }, [meeting, currentUser, admissionPhase, currentUserId]);
 
   // ── Guest admission request ───────────────────────────────────────────
   useEffect(() => {
-    if (admissionPhase !== "guest-requesting" || !currentUser || !meetingId) return;
+    if (admissionKey === 0 || !currentUser || !meetingId) return;
 
     let alive = true;
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -194,9 +200,11 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
       restrictedRoomRef.current = restrictedRoomInst;
 
       restrictedRoomInst.on(RoomEvent.DataReceived, (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
+        console.log("[Admission] DataReceived fired, topic:", topic, "alive:", alive);
         if (!alive || topic !== "admission") return;
         try {
           const msg = JSON.parse(new TextDecoder().decode(payload));
+          console.log("[Admission] Parsed message:", msg.type, "userId:", msg.payload?.userId, "expected:", currentUserId);
           if (msg.type === "JOIN_APPROVED" && msg.payload.userId === currentUserId) {
             clearTimeout(timeoutId);
             restrictedRoomInst?.disconnect();
@@ -213,12 +221,15 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
 
       try {
         await restrictedRoomInst.connect(ENV.LIVEKIT_URL, data.waitingToken);
-      } catch {
+        console.log("[Admission] Connected to restricted room, state:", restrictedRoomInst.state);
+      } catch (err) {
+        console.error("[Admission] Failed to connect to restricted room:", err);
         if (alive) setAdmissionPhase("guest-rejected");
         return;
       }
 
       if (!alive) { restrictedRoomInst.disconnect(); return; }
+      console.log("[Admission] Transitioning to guest-waiting, room still connected:", restrictedRoomInst.state);
       if (alive) setAdmissionPhase("guest-waiting");
 
       timeoutId = setTimeout(() => {
@@ -237,7 +248,7 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
       restrictedRoomInst?.disconnect();
       restrictedRoomRef.current = null;
     };
-  }, [admissionPhase, meetingId, currentUser, currentUserId]);
+  }, [admissionKey, meetingId, currentUser, currentUserId]);
 
   // ── 1-hour meeting time limit ─────────────────────────────────────────
   useEffect(() => {

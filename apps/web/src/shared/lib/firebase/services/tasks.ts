@@ -1,11 +1,19 @@
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, Timestamp, doc, updateDoc } from "firebase/firestore"
 import { db } from "../config"
 
+export type SelectedAssignee = {
+  userId: string
+  name: string
+  email?: string | null
+}
+
 export type Task = {
   id: string
   meetingId: string
   title: string
   assignedToUserId: string | null
+  assignedToName?: string | null
+  assignees?: SelectedAssignee[]
   createdByUserId: string
   status: "open" | "done"
   createdAt: Timestamp | null

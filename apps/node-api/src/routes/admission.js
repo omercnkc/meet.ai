@@ -71,14 +71,15 @@ router.post("/request", async (req, res) => {
     const at = new AccessToken(livekitApiKey, livekitApiSecret, {
       identity: userId,
       name: userName,
+      metadata: JSON.stringify({ waiting: true }),
     });
     // Restricted token: cannot publish or subscribe to media, but can listen to data
-    at.addGrant({ 
-      roomJoin: true, 
-      room: meetingId, 
-      canPublish: false, 
-      canSubscribe: false, 
-      canPublishData: true 
+    at.addGrant({
+      roomJoin: true,
+      room: meetingId,
+      canPublish: false,
+      canSubscribe: false,
+      canPublishData: true
     });
     waitingToken = await at.toJwt();
     logAdmissionEvent('RESTRICTED_TOKEN_GENERATED', meetingId, userId, request.requestId);
