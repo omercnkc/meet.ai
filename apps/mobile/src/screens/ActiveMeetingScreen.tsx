@@ -664,6 +664,9 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
       const camEntry = videoTracks.find(
         v => v.participant.identity === p.identity && v.source === Track.Source.Camera
       );
+      const screenEntry = videoTracks.find(
+        v => v.participant.identity === p.identity && v.source === Track.Source.ScreenShare
+      );
       
       let hasVideo = false;
       let videoTrack = null;
@@ -681,29 +684,46 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
       let isScreenSharingParticipant = false;
 
       if (participantObj) {
-        // Check camera track publication
-        const camPub = participantObj.getTrackPublication(Track.Source.Camera);
-        if (camPub && camPub.track && !camPub.isMuted) {
+        // Check screen share first (prioritize over camera)
+        const screenPub = participantObj.getTrackPublication(Track.Source.ScreenShare);
+        isScreenSharingParticipant = !!(screenPub && screenPub.track && !screenPub.isMuted);
+
+        if (isScreenSharingParticipant) {
           hasVideo = true;
-          videoTrack = camPub.track;
+          videoTrack = screenPub.track;
+        } else {
+          // Fallback to camera
+          const camPub = participantObj.getTrackPublication(Track.Source.Camera);
+          if (camPub && camPub.track && !camPub.isMuted) {
+            hasVideo = true;
+            videoTrack = camPub.track;
+          }
         }
+
         // Check mic track publication
         const micPub = participantObj.getTrackPublication(Track.Source.Microphone);
         isMicMuted = !micPub || !micPub.track || micPub.isMuted;
-        // Check screen share
-        const screenPub = participantObj.getTrackPublication(Track.Source.ScreenShare);
+      } else {
+        // Fallback to videoTracks entries
+        const screenPub = screenEntry ? screenEntry.participant.getTrackPublication(Track.Source.ScreenShare) : null;
         isScreenSharingParticipant = !!(screenPub && screenPub.track && !screenPub.isMuted);
-      } else if (camEntry) {
-        // Fallback to track status if participantObj not in room map yet
-        const pub = camEntry.participant.getTrackPublication(Track.Source.Camera);
-        if (pub && pub.track && !pub.isMuted) {
+
+        if (isScreenSharingParticipant) {
           hasVideo = true;
-          videoTrack = pub.track;
+          videoTrack = screenPub.track;
+        } else if (camEntry) {
+          const pub = camEntry.participant.getTrackPublication(Track.Source.Camera);
+          if (pub && pub.track && !pub.isMuted) {
+            hasVideo = true;
+            videoTrack = pub.track;
+          }
         }
-        const micPub = camEntry.participant.getTrackPublication(Track.Source.Microphone);
-        isMicMuted = !micPub || !micPub.track || micPub.isMuted;
-        const screenPub = camEntry.participant.getTrackPublication(Track.Source.ScreenShare);
-        isScreenSharingParticipant = !!(screenPub && screenPub.track && !screenPub.isMuted);
+
+        const activeEntry = screenEntry || camEntry;
+        if (activeEntry) {
+          const micPub = activeEntry.participant.getTrackPublication(Track.Source.Microphone);
+          isMicMuted = !micPub || !micPub.track || micPub.isMuted;
+        }
       }
 
       return {
@@ -787,7 +807,7 @@ export default function ActiveMeetingScreen({ route, navigation }: Props) {
             <View style={[styles.nameBadge, { backgroundColor: colors.background + "D9", borderColor: colors.border }]}>
               {item.isSpeaking && <View style={styles.speakDot} />}
               <Text style={[styles.nameBadgeText, { color: colors.foreground }]} numberOfLines={1}>
-                {item.name} {isLocal && ` (${t("you") || "You"})`}
+                {item.name} {isLocal && ` (${t("you") || "You"})`}{item.isScreenSharing && ` (${t("screen") || "Screen"})`}
               </Text>
             </View>
           </View>
